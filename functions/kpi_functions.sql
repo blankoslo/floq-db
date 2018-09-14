@@ -37,8 +37,8 @@ SELECT
 FROM
  (
    SELECT * from month_dates(in_start_date, in_end_date, interval '6' month)
- ) as x, 
-   product_development_hours(x.from_date, x.to_date) as hours   
+ ) AS x, 
+   product_development_hours(x.from_date, x.to_date) AS hours   
 GROUP BY x.from_date, x.to_date, hours.hours
 );
 END
@@ -61,7 +61,7 @@ SELECT
 FROM
  (
    SELECT * from month_dates(in_from_date, in_to_date, interval '6' month)
- ) as x, 
+ ) AS x, 
  sum_business_hours(x.from_date, x.to_date),
  sick_hours(x.from_date, x.to_date)
 GROUP BY x.from_date, x.to_date, sum_business_hours, sick_hours
@@ -86,8 +86,8 @@ SELECT
 FROM
  (
    SELECT * from month_dates(in_from_date, in_to_date, interval '6' month)
- ) as x, 
-   hours_per_project(x.from_date, x.to_date) as hours_per_project   
+ ) AS x, 
+   hours_per_project(x.from_date, x.to_date) AS hours_per_project   
 GROUP BY x.from_date, x.to_date
 );
 END
@@ -115,7 +115,7 @@ FROM
     FROM 
 		(
 			SELECT 
-        employees.id as id,
+        employees.id AS id,
         employees.first_name,
         employees.date_of_employment,
         employees.termination_date
@@ -130,7 +130,7 @@ FROM
         employees.id,
         employees.date_of_employment,
         employees.termination_date
-		) as e,
+		) AS e,
 		business_hours(greatest(in_from_date, e.date_of_employment),least(e.termination_date, in_to_date))
   ) tt  
  );
@@ -172,7 +172,7 @@ BEGIN
          SUM(minutes/60.0)  :: numeric AS sum_billable_hours
     FROM 
      sum_business_hours(from_date, to_date), 
-     unavailable_hours(from_date, to_date),
+     unavailable_time_entry_hours(from_date, to_date),
      time_entry
     JOIN projects ON
       projects.id = time_entry.project AND
@@ -184,7 +184,7 @@ $$ LANGUAGE plpgsql;
 
 
 
-CREATE OR REPLACE FUNCTION unavailable_hours(in_from_date date, in_to_date date)
+CREATE OR REPLACE FUNCTION unavailable_time_entry_hours(in_from_date date, in_to_date date)
 RETURNS TABLE (
 	unavailable_hours numeric
 ) AS
@@ -196,7 +196,7 @@ SELECT
 	tt.unavailable
 FROM
   (
-	select sum(minutes/60.0) as unavailable from projects join time_entry on time_entry.project = projects.id where projects.billable='unavailable'	and time_entry.date >= in_from_date and time_entry.date <= in_to_date 
+	select sum(minutes/60.0) AS unavailable from projects join time_entry on time_entry.project = projects.id where projects.billable='unavailable'	and time_entry.date >= in_from_date and time_entry.date <= in_to_date 
   ) tt  
  );
 END
@@ -207,7 +207,7 @@ RETURNS TABLE ( to_date DATE, from_date DATE) AS
 $$
 BEGIN
   RETURN QUERY select date_trunc('DAY', monat - interval '1' day)::DATE, date_trunc('MONTH', monat - in_interval)::DATE from 
-    (select * from generate_series(date_trunc('MONTH', in_from_date), date_trunc('MONTH', in_to_date),'1 month') as monat) as mt order by 1;
+    (select * from generate_series(date_trunc('MONTH', in_from_date), date_trunc('MONTH', in_to_date),'1 month') AS monat) AS mt order by 1;
     END
 $$ LANGUAGE plpgsql;
 
@@ -225,7 +225,16 @@ SELECT
   tt.unavailable
 FROM
   (
-  select 7.5 * count(*) as unavailable from staffing join projects on staffing.project = projects.id where billable='unavailable' and staffing.date <= end_date and staffing.date >= start_date
+    SELECT
+      7.5 * count(*) AS unavailable
+    FROM
+      staffing 
+    JOIN projects ON
+      staffing.project = projects.id
+    WHERE 
+      billable='unavailable' AND
+      staffing.date <= end_date AND
+      staffing.date >= start_date
   ) tt  
  );
 END
@@ -245,7 +254,7 @@ SELECT
 FROM
   (
     SELECT
-      sum(minutes)/60.0 as sick
+      sum(minutes)/60.0 AS sick
     FROM
       time_entry
     WHERE
@@ -320,8 +329,8 @@ begin
   return query (
     SELECT
       start_date::date,
-      (SUM(spw.days) * 7.5)::double precision as hours
-    FROM staffing_per_week AS spw, projects as p
+      (SUM(spw.days) * 7.5)::double precision AS hours
+    FROM staffing_per_week AS spw, projects AS p
     WHERE spw.project_id = p.id and p.billable = 'billable' 
     and to_date('' || spw.year || '-' || spw.week || '-1', 'IYYY-IW-ID') >= start_date
     and to_date('' || spw.year || '-' || spw.week || '-5', 'IYYY-IW-ID') <= end_date
@@ -336,18 +345,18 @@ AS $function$
 begin
   return query (
     SELECT
-      d.org_date::date as org_date,
-      d.adj_date::date as adj_date,
-      (pbh.hours/ash.available_hours)*100::double precision as predicted_fg,
-      (abh.sum_billable_hours/abh.sum_available_hours)*100::double precision as achieved_fg,
-      ((abh.sum_billable_hours/abh.sum_available_hours)/(pbh.hours/ash.available_hours))*100-100 as deviation_percent
+      d.org_date::date AS org_date,
+      d.adj_date::date AS adj_date,
+      (pbh.hours/ash.available_hours)*100::double precision AS predicted_fg,
+      (abh.sum_billable_hours/abh.sum_available_hours)*100::double precision AS achieved_fg,
+      ((abh.sum_billable_hours/abh.sum_available_hours)/(pbh.hours/ash.available_hours))*100-100 AS deviation_percent
     FROM
       (
         SELECT
-          dd as org_date,
-          (dd - ((SELECT CASE WHEN wd = 6 THEN 0 ELSE wd END FROM date_part('dow', dd) as wd) || ' day')::INTERVAL) as adj_date
+          dd AS org_date,
+          (dd - ((SELECT CASE WHEN wd = 6 THEN 0 ELSE wd END FROM date_part('dow', dd) AS wd) || ' day')::INTERVAL) AS adj_date
         FROM 
-          generate_series(start_date::timestamp, end_date::timestamp, '1 month') as dd
+          generate_series(start_date::timestamp, end_date::timestamp, '1 month') AS dd
       ) d,
       planned_billable_hours_in_period((d.adj_date::date - interval '12 week')::DATE, d.adj_date::date) pbh,
       accumulated_staffing_hours2((d.adj_date::date - interval '12 week')::DATE, d.adj_date::date) ash,
@@ -366,14 +375,14 @@ begin
     SELECT
       d.org_date::DATE,
       d.fwd_adj_date::DATE,
-      (pbh.hours/ash.available_hours)*100::double precision as forecasted_fg
+      (pbh.hours/ash.available_hours)*100::double precision AS forecasted_fg
     FROM
     (
       SELECT
-        date_i as org_date,
-        (date_i + ((7 - date_part('dow', date_i)) || ' day')::INTERVAL) as fwd_adj_date 
+        date_i AS org_date,
+        (date_i + ((7 - date_part('dow', date_i)) || ' day')::INTERVAL) AS fwd_adj_date 
       FROM
-        generate_series(start_date::timestamp, end_date::timestamp, '1 month') as date_i
+        generate_series(start_date::timestamp, end_date::timestamp, '1 month') AS date_i
     ) d,
     planned_billable_hours_in_period(d.fwd_adj_date::DATE, (d.fwd_adj_date + interval '12 weeks')::DATE) pbh,
     accumulated_staffing_hours2(d.fwd_adj_date::DATE, (d.fwd_adj_date + interval '12 weeks')::DATE) ash
