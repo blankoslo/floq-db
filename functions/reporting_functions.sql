@@ -92,8 +92,7 @@ RETURNS TABLE (
   actual_fg numeric,
   deviation_available_hours numeric,
   deviation_billable_hours numeric,
-  deviation_fg numeric,
-  visibility numeric
+  deviation_fg numeric
 ) AS
 $$
 BEGIN
@@ -112,8 +111,7 @@ SELECT
   100*(actual.sum_billable_hours / actual.sum_available_hours)                        AS actual_fg,
   actual.sum_available_hours - planned.available_hours                                AS deviation_available_hours,
   actual.sum_billable_hours - planned.billable_hours                                  AS deviation_billable_hours,
-  100*((actual.sum_billable_hours - planned.billable_hours)/ planned.available_hours) AS deviation_fg,
-  v.visibility
+  100*((actual.sum_billable_hours - planned.billable_hours)/ planned.available_hours) AS deviation_fg
 FROM
   (SELECT
      tt.year                             AS year,
