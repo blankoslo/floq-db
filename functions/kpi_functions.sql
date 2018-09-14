@@ -304,18 +304,23 @@ end
 $function$;
 
 
-CREATE OR REPLACE FUNCTION public.prodev(start_date date, end_date date)
-  RETURNS TABLE(date date, percent double precision)
+CREATE OR REPLACE FUNCTION public.kpi_prodev(start_date date, end_date date)
+  RETURNS TABLE(from_date date, to_date date, percent double precision, project_hours double precision, available_hours double precision)
+  LANGUAGE plpgsql
 AS $function$
 begin
   return query (
-    SELECT d.date, ((f.project_hours / p.available_hours)*100)::double precision AS percent FROM generate_series(
-      start_date::date,
-      end_date,
-      '1 month'
-  ) d, 
-    accumulated_staffing_hours2((d.date - interval '6' month)::DATE, d.date) p, 
-    total_hours_on_project_in_period((d.date - interval '6' month)::DATE, d.date, 'FAG1000') f
+    SELECT
+      d.from_date,
+      d.to_date,
+      ((f.project_hours / abh.sum_available_hours)*100)::double precision AS percent,
+      f.project_hours,
+      abh.sum_available_hours
+    FROM
+      (SELECT * from month_dates('2017-07-01', '2018-07-01', interval '6' month)) d,
+      accumulated_billed_hours2(d.from_date, d.to_date) abh,
+      total_hours_on_project_in_period(d.from_date, d.to_date, 'FAG1000') f
+      
   );
 end
 $function$;
