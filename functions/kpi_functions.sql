@@ -533,3 +533,113 @@ WHERE
 end
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION alene_engasjement(in_from_date date, in_to_date date)
+RETURNS TABLE (from_date date, to_date date, alene_engasjement_percent double precision) AS 
+$$
+BEGIN
+	RETURN QUERY (
+		SELECT
+			x.from_date,
+			x.to_date,
+			count(distinct(ae.customer)) / t.employee_count :: double precision
+		FROM 
+			month_dates(in_from_date, in_to_date, interval '2' month) x,
+			alene_engasjement_in_period(x.from_date, x.to_date) ae,
+			employees_in_period(x.from_date, x.to_date) t
+		GROUP BY x.from_date, x.to_date, t.employee_count
+	);
+END
+$$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE FUNCTION employees_in_period(from_date date, to_date date)
+RETURNS TABLE (employee_count bigint) AS 
+$$ 
+BEGIN 
+	RETURN QUERY (
+		SELECT 
+		count(*)
+		FROM employees
+		WHERE date_of_employment <= to_date and (termination_date >= from_date or termination_date is null) and has_permanent_position is TRUE
+	);
+END
+$$ LANGUAGE plpgsql;
+
+
+select * from employees where date_of_employment <= '2018-05-01' and (termination_date >= '2018-04-01' or termination_date is null) and has_permanent_position is TRUE; 
+
+CREATE OR REPLACE FUNCTION alene_engasjement_in_period(from_date date, to_date date)
+RETURNS TABLE (customer text, employee_id bigint) AS
+$$
+BEGIN
+	RETURN QUERY (
+		SELECT 
+			t.customer, 
+			t.employee_id
+		FROM 
+			(
+				select projects.customer, sum(distinct(employee)) as employee_id from time_entry, projects, employees 
+				where projects.id = time_entry.project 
+				and employees.id = time_entry.employee
+				and date <= to_date and date >= from_date and projects.billable = 'billable'
+				group by projects.customer
+				having count(distinct(employee)) = 1
+			) t,
+			fg_for_employee_for_customer(t.employee_id, t.customer, from_date, to_date) fg
+		WHERE
+			fg.fg > 0.5
+	);
+END
+$$ LANGUAGE plpgsql; 			
+
+CREATE OR REPLACE FUNCTION sum_business_hours_for_employee(employee_id bigint, in_from_date date, in_to_date date)
+RETURNS TABLE (sum_business_hours double precision) AS 
+$$
+BEGIN
+	RETURN QUERY (
+		SELECT
+			business_hours(greatest(in_from_date, e.date_of_employment),least(e.termination_date, in_to_date))
+		FROM employees e where e.id = employee_id limit 1
+	);
+END
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION unavailable_time_entry_hours_for_employee(employee_id integer, in_from_date date, in_to_date date)
+RETURNS TABLE (
+  unavailable_hours numeric
+) AS
+$$
+BEGIN
+  RETURN QUERY (
+
+SELECT
+  COALESCE(tt.unavailable, 0.0)
+FROM
+  (
+  select sum(minutes/60.0) AS unavailable from projects join time_entry on time_entry.project = projects.id where employee_id = employee and projects.billable='unavailable' and time_entry.date >= in_from_date and time_entry.date <= in_to_date 
+  ) tt  
+ );
+END
+$$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE FUNCTION fg_for_employee_for_customer(employee_id bigint, in_customer text, in_from_date date, in_to_date date)
+RETURNS TABLE (
+  fg double precision
+) AS
+$$
+BEGIN
+  RETURN QUERY (
+SELECT
+  fg_hours / (tt.sum_business_hours - COALESCE(t.unavailable_hours, 0.0))
+FROM
+	(select sum(minutes)/60.0 as fg_hours from time_entry, projects where 
+projects.id = time_entry.project and
+time_entry.employee = employee_id and date <= in_to_date and date >= in_from_date and projects.billable = 'billable' and projects.customer = in_customer) g,
+	unavailable_time_entry_hours_for_employee(employee_id, in_from_date, in_to_date) t,
+	sum_business_hours_for_employee(employee_id, in_from_date, in_to_date) tt
+);
+END
+$$ LANGUAGE plpgsql;
+
+
