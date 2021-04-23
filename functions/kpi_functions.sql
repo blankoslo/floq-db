@@ -550,7 +550,7 @@ $$
 begin
 return query (
 SELECT 
-    SUM(time_entry.minutes)/60.0 AS hours
+    COALESCE(SUM(time_entry.minutes)/60.0, 0) AS hours
 FROM
     projects JOIN time_entry ON time_entry.project = projects.id
 WHERE
