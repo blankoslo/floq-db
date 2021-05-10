@@ -82,3 +82,4 @@ add_employee_user 2019-10-30T13:28:19Z Trond Øydna <trond@trond-ubuntu> # Addin
 enable_employee_row_level_security 2019-10-30T13:21:20Z Trond Øydna <trond@trond-ubuntu> # Enabling row level security for employee user
 drop_timelock_view 2019-10-31T12:27:09Z Trond Øydna <trond@trond-ubuntu> # Dropping materialized view timelock_view
 revoke_write_grants_on_employee_role_from_employee 2019-10-31T14:06:51Z Trond Øydna <trond@trond-ubuntu> # Revoking grants to write on employee_role from employee
+add_read_only_user 2021-05-04T14:56:53Z Terje Uglebakken <terje.uglebakken@blank.no> # Add read only user
