@@ -4,6 +4,7 @@ BEGIN;
 
 ALTER TABLE employees
     ADD COLUMN hr_manager INTEGER REFERENCES employees(id) ON UPDATE NO ACTION ON DELETE SET NULL;
+    GRANT SELECT ON employees TO employee;
 
 COMMIT;
 -- 

@@ -4,5 +4,6 @@ BEGIN;
 
 ALTER TABLE employees
     DROP COLUMN hr_manager;
+    REVOKE SELECT ON employees TO employee;
 
 COMMIT;
