@@ -19,8 +19,8 @@ CREATE TABLE employee_settings (
 );
 
 CREATE TABLE employee_task (
-    id text NOT NULL,
-    task_id text NOT NULL,
+    id uuid DEFAULT gen_random_uuid(),
+    task_id uuid NOT NULL,
     completed boolean DEFAULT false NOT NULL,
     employee_id integer NOT NULL,
     responsible_id integer NOT NULL,
@@ -30,15 +30,15 @@ CREATE TABLE employee_task (
 );
 
 CREATE TABLE employee_task_comments (
-    id text NOT NULL,
+    id uuid DEFAULT gen_random_uuid(),
     text text NOT NULL,
     created_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     created_by_id integer NOT NULL,
-    employee_task_id text NOT NULL
+    employee_task_id uuid NOT NULL
 );
 
 CREATE TABLE notification (
-    id text NOT NULL,
+    id uuid DEFAULT gen_random_uuid(),
     employee_id integer NOT NULL,
     created_by integer,
     created_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -47,7 +47,7 @@ CREATE TABLE notification (
 );
 
 CREATE TABLE phase (
-    id text NOT NULL,
+    id uuid DEFAULT gen_random_uuid(),
     title text NOT NULL,
     process_template_id text NOT NULL,
     created_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -62,22 +62,22 @@ CREATE TABLE process_template (
 );
 
 CREATE TABLE profession (
-    id integer NOT NULL,
+    id SERIAL NOT NULL,
     title text NOT NULL
 );
 
 CREATE TABLE profession_task (
     profession_id integer NOT NULL,
-    task_id text NOT NULL
+    task_id uuid NOT NULL
 );
 
 CREATE TABLE task (
-    id text NOT NULL,
+    id uuid DEFAULT gen_random_uuid(),
     title text NOT NULL,
     description text,
     link text,
     global boolean DEFAULT true NOT NULL,
-    phase_id text,
+    phase_id uuid,
     responsible_id integer,
     created_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     active boolean DEFAULT true NOT NULL,
