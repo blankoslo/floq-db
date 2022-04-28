@@ -62,12 +62,12 @@ CREATE TABLE process_template (
 );
 
 CREATE TABLE profession (
-    id SERIAL NOT NULL,
+    slug text ,
     title text NOT NULL
 );
 
 CREATE TABLE profession_task (
-    profession_id integer NOT NULL,
+    profession_id text NOT NULL,
     task_id uuid NOT NULL
 );
 
@@ -87,7 +87,7 @@ CREATE TABLE task (
 );
 
 ALTER TABLE employees
-    ADD profession_id integer;
+    ADD profession_id text;
 
 ALTER TABLE employee_settings
     ADD CONSTRAINT employee_settings_pkey PRIMARY KEY (employee_id);
@@ -108,7 +108,7 @@ ALTER TABLE process_template
     ADD CONSTRAINT process_template_pkey PRIMARY KEY (slug);
 
 ALTER TABLE profession
-    ADD CONSTRAINT profession_pkey PRIMARY KEY (id);
+    ADD CONSTRAINT profession_pkey PRIMARY KEY (slug);
 
 ALTER TABLE profession_task
     ADD CONSTRAINT profession_task_pkey PRIMARY KEY (profession_id, task_id);
@@ -122,7 +122,7 @@ CREATE UNIQUE INDEX profession_title_key ON profession USING btree (title);
 
 ALTER TABLE employees
     ADD CONSTRAINT employee_hr_manager_fkey FOREIGN KEY (hr_manager) REFERENCES employees(id) ON DELETE SET NULL,
-    ADD CONSTRAINT employee_profession_id_fkey FOREIGN KEY (profession_id) REFERENCES profession(id) ON DELETE RESTRICT;
+    ADD CONSTRAINT employee_profession_id_fkey FOREIGN KEY (profession_id) REFERENCES profession(slug) ON DELETE RESTRICT;
 
 ALTER TABLE employee_settings
     ADD CONSTRAINT employee_settings_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE;
@@ -145,7 +145,7 @@ ALTER TABLE phase
     ADD CONSTRAINT phase_process_template_id_fkey FOREIGN KEY (process_template_id) REFERENCES process_template(slug) ON DELETE CASCADE;
 
 ALTER TABLE profession_task
-    ADD CONSTRAINT profession_task_profession_id_fkey FOREIGN KEY (profession_id) REFERENCES profession(id) ON DELETE CASCADE,
+    ADD CONSTRAINT profession_task_profession_id_fkey FOREIGN KEY (profession_id) REFERENCES profession(slug) ON DELETE CASCADE,
     ADD CONSTRAINT profession_task_task_id_fkey FOREIGN KEY (task_id) REFERENCES task(id) ON DELETE CASCADE;
 
 ALTER TABLE task
