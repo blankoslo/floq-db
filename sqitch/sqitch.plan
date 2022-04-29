@@ -84,3 +84,4 @@ drop_timelock_view 2019-10-31T12:27:09Z Trond Øydna <trond@trond-ubuntu> # Drop
 revoke_write_grants_on_employee_role_from_employee 2019-10-31T14:06:51Z Trond Øydna <trond@trond-ubuntu> # Revoking grants to write on employee_role from employee
 add_read_only_user 2021-05-04T14:56:53Z Terje Uglebakken <terje.uglebakken@blank.no> # Add read only user
 alter_table_employees_add_hr_manager 2021-09-24T09:20:13Z Zaim Imran <zaim.imran@blank.no> # Alter employee table with hr manager
+add_trak 2022-04-04T19:59:06Z ,,, <zaim@DESKTOP-PB7BHHV> # Add trak tables to sqitch
