@@ -2,6 +2,8 @@
 
 BEGIN;
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TYPE responsible_type AS ENUM (
     'HR_MANAGER',
     'PROJECT_MANAGER',

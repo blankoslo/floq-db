@@ -20,4 +20,6 @@ DROP TYPE responsible_type CASCADE;
 
 DROP INDEX IF EXISTS employee_email_key CASCADE;
 
+DROP EXTENSION IF EXISTS pgcrypto;
+
 COMMIT;
