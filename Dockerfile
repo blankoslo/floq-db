@@ -10,11 +10,9 @@ ENV PG_DST_USER=root
 ENV PG_DST_PASS=password
 ENV PG_DST_HOST=localhost
 
-ADD db-replicate /etc/periodic/daily/db-replicate
+ADD db-replicate /db-replicate
 ADD db_drop_all.sql /db_drop_all.sql
 ADD db_disable_fks.sql /db_disable_fks.sql
 ADD db_enable_fks.sql /db_enable_fks.sql
 
-WORKDIR /
-
-CMD exec crond -f -L /var/log/crond.log
+CMD sh db-replicate
