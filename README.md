@@ -1,21 +1,15 @@
-Floq database replication
-=========================
-
+# Floq database replication
 Copies the contents from the production database to test every night so that we
 have “real” data during development.
 
-To build the container, run:
+## Build & deploy
+A build trigger on Google Cloud Build is connected to this repo and will build a new version whenever a new commit is created on master. The image is then stored on Google Container Reistry.
 
-    TAG="prod-$(git rev-parse --short HEAD)"
-    docker build . -t eu.gcr.io/marine-cycle-97212/floq-db-replicate:prod
-    docker tag eu.gcr.io/marine-cycle-97212/floq-db-replicate:prod \
-      eu.gcr.io/marine-cycle-97212/floq-db-replicate:${TAG}
+[Google Cloud Build triggers](https://console.cloud.google.com/cloud-build/triggers?project=marine-cycle-97212) (look for `floq-db-replicate-docker-container`)
 
-To push the container to the registry:
+[Google Container Registry](https://console.cloud.google.com/gcr/images/marine-cycle-97212/eu/floq-db-replicate?project=marine-cycle-97212)
 
-    gcloud docker -- push eu.gcr.io/marine-cycle-97212/floq-db-replicate:prod
-    gcloud docker -- push eu.gcr.io/marine-cycle-97212/floq-db-replicate:${TAG}
+## Runtime
+A Google Cloud Run Job runs every morning (at 7) duplicating the prod database in test, using the latest image on Google Container Registry.
 
-To update the image used in the cluster:
-
-    kubectl set image deployment/floq-db-replicate floq-db-replicate=eu.gcr.io/marine-cycle-97212/floq-db-replicate:${TAG}
+[Google Cloud Run Job](https://console.cloud.google.com/run/jobs/details/europe-north1/floq-db-replicate-prod-to-test/executions?project=marine-cycle-97212)
