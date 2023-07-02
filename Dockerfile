@@ -1,4 +1,4 @@
-FROM onjin/alpine-postgres:9.6
+FROM postgres:15-alpine
 
 ENV PG_SRC_DB=floq
 ENV PG_SRC_USER=root
