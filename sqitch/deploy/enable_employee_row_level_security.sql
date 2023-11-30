@@ -9,7 +9,7 @@ DECLARE
     logged_in_employee_id INTEGER := NULL;
     is_admin              BOOL    := NULL;
 BEGIN
-    SELECT id FROM employees WHERE email = current_setting('request.jwt.claim.email') INTO logged_in_employee_id;
+    SELECT id FROM employees WHERE email = current_setting('request.jwt.claims')::json->>'email' INTO logged_in_employee_id;
     SELECT COUNT(*) > 0 FROM employee_role WHERE employee_id = logged_in_employee_id AND role_type = 'admin' INTO is_admin;
 
     IF is_admin THEN
@@ -28,7 +28,7 @@ DECLARE
     logged_in_employee_id INTEGER := NULL;
     is_admin              BOOL    := NULL;
 BEGIN
-    SELECT id FROM employees WHERE email = current_setting('request.jwt.claim.email') INTO logged_in_employee_id;
+    SELECT id FROM employees WHERE email = current_setting('request.jwt.claims')::json->>'email' INTO logged_in_employee_id;
     SELECT COUNT(*) > 0 FROM employee_role WHERE employee_id = logged_in_employee_id AND role_type = 'admin' INTO is_admin;
 
     RETURN is_admin;
