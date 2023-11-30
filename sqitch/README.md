@@ -25,3 +25,6 @@ To add a new migration to the database schema:
 To revert the last change:
 
 - `sqitch revert --to '@HEAD^' --target floq-dev`
+
+## New DB instructions
+TODO

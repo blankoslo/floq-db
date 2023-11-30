@@ -1,6 +1,3 @@
 #!/bin/sh
 docker run -v "$(pwd):/src/" -v "${PWD}/.sqitch:/root/.sqitch/" \
-  -e "SQITCH_PASSWORD=${SQITCH_PASSWORD}" \
-  --rm docteurklein/sqitch:pgsql \
-  -d floq -u root -h "${SQITCH_HOST}" "$@"
-
+  --rm sqitch/sqitch "$@"

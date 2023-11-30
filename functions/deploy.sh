@@ -13,8 +13,8 @@ case "$1" in
          HOST=floq.caawuzisqucy.eu-central-1.rds.amazonaws.com
          shift
          ;;
-     -p|--prod-folq)
-         HOST=floq-folq-prod.caawuzisqucy.eu-central-1.rds.amazonaws.com
+     --test-gcp)
+         HOST=34.88.232.56
          shift
          ;;
      *)

@@ -1,6 +1,6 @@
 #!/bin/sh
 
-if ! grep -q "CREATE USER employee ENCRYPTED PASSWORD NULL;" sqitch/deploy/add_employee_user.sql
+if ! grep -q "CREATE USER employee PASSWORD NULL;" sqitch/deploy/add_employee_user.sql
 then
     echo "Error: Please set the password of the user employee back to NULL" 2>&1
     exit 1
