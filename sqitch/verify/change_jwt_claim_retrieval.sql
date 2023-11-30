@@ -2,4 +2,6 @@
 
 BEGIN;
 
+-- No easy way to verify this change
+
 ROLLBACK;
