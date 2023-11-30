@@ -39,5 +39,5 @@ RETURNS record LANGUAGE sql AS $$
       role,
       bio
   FROM employees 
-  WHERE email = current_setting('request.jwt.claim.email')
+  WHERE email = current_setting('request.jwt.claims')::json->>'email'
 $$; 
