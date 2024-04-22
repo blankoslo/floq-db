@@ -31,6 +31,7 @@ have “real” data during development.
 - In the Dockerfile, edit:
   - `ENV PG_SRC_HOST=floq-test.caawuzisqucy.eu-central-1.rds.amazonaws.com`
   - `ENV PG_DST_HOST=host.docker.internal`
+- In `db-replicate`, remove `/` from where it says `db_*.sql`
 - Run `./db-replicate`
 
 ## Empty test database?
