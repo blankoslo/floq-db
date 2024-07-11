@@ -90,3 +90,4 @@ change_jwt_claim_retrieval 2023-11-30T09:24:47Z root Sigbjørn Myhre <root@c2205
 add_view_employee_project_responsible 2024-05-16T12:40:19Z root <root@995ca6998281> # Add a view over the project responsible for each employee
 grant_select_on_employee_responsible_view_trak_read_only 2024-06-03T07:40:38Z root <root@05674ad6324a> # Grant select to trak_read_only for employee_project_responsible view
 update_view_employee_project_responsible 2024-06-13T08:21:07Z root <root@86f76b9c44ce> # Update employee_project_responsible view with new rules for determining project responsible
+alter_time_entry_use_btree_index_and_add_employee_date_composite_index 2024-07-10T14:13:21Z Isak Grande Bjørnstad <isak@Isaks-MacBook-Pro.local> # Change index type on time_entry from brim to btree. Also add a (employee, date) composite index
