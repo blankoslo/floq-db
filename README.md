@@ -8,6 +8,8 @@ Should be used for all tables, and everything we need for the tables to work: cu
 
 For all functions and views, that are created and updated mainly to develop our API exposed through postgrest.
 
+See [functions/README.md](functions/README.md) for information on deploying new functions.
+
 ### Why?
 
 Because the Sqitch migrations don't make much sense when we iterate over functions often. It is hard following their changes in git when we end up with v1, v2, v3... of every function.
