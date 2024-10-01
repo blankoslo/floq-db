@@ -24,8 +24,8 @@ BEGIN
 				in_project AS project,
 				in_percentage AS percentage
 			FROM weekdays
-			LEFT JOIN staffing s ON s.employee = in_employee AND s.date = weekdays.cur_date
-			WHERE s.date IS NULL
+			LEFT JOIN staffing s ON s.employee = in_employee AND s.date = weekdays.cur_date AND s.project = in_project
+			WHERE s.employee IS NULL
 			RETURNING date
  		)
  		SELECT date FROM new_staffing
