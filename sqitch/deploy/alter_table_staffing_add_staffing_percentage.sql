@@ -5,6 +5,6 @@ BEGIN;
 ALTER TABLE staffing
     DROP CONSTRAINT staffing_pkey,
     ADD COLUMN percentage INT NOT NULL DEFAULT 100,
-    ADD PRIMARY KEY (employee, date, percentage);
+    ADD PRIMARY KEY (employee, project, date);
 
 COMMIT;
