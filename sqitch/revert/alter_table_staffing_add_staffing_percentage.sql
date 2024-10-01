@@ -2,8 +2,9 @@
 
 BEGIN;
 
-DROP CONSTRAINT staffing_pkey;
-DROP COLUMN percentage;
-ADD PRIMARY KEY staffing pkey(employee, date);
+ALTER TABLE staffing
+    DROP CONSTRAINT staffing_pkey,
+    DROP COLUMN percentage,
+    ADD PRIMARY KEY (employee, date);
 
 COMMIT;
