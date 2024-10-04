@@ -7,7 +7,7 @@ DECLARE
     result JSONB;
 BEGIN
     SELECT
-        jsonb_agg(jsonb_build_object('id', e.employee_id, 'name', concat_ws(' ', e.first_name, e.last_name), 'subRows', COALESCE(s.subrows, '[]'::jsonb)) ORDER BY e.first_name, e.last_name)
+        jsonb_agg(jsonb_build_object('id', e.employee_id, 'name', concat_ws(' ', e.first_name, e.last_name), 'imageUrl', e.image_url, 'subRows', COALESCE(s.subrows, '[]'::jsonb)) ORDER BY e.first_name, e.last_name)
     INTO result
     FROM 
         public.get_employees_in_dates(start_date, end_date) e
