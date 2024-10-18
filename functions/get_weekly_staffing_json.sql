@@ -23,12 +23,13 @@ BEGIN
 					a.date) AS joined_date,
 				COALESCE(percentage,
 					100) AS percentage,
-                p.billable
-			FROM
-				staffing s
-                LEFT JOIN projects p ON s.project = p.id
-				FULL OUTER JOIN absence a ON s.employee = a.employee_id
-					AND s.date = a.date),
+                p.billable AS billable
+            FROM
+                    staffing s
+                FULL OUTER JOIN absence a ON s.employee = a.employee_id
+                    AND s.date = a.date
+                LEFT JOIN projects p ON COALESCE(s.project, a.reason) = p.id
+            ),
 				employee_data AS (
 					SELECT
 						id,
