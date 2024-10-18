@@ -22,11 +22,14 @@ BEGIN
 				COALESCE(s.date,
 					a.date) AS joined_date,
 				COALESCE(percentage,
-					100) AS percentage
-			FROM
-				staffing s
-				FULL OUTER JOIN absence a ON s.employee = a.employee_id
-					AND s.date = a.date),
+					100) AS percentage,
+                p.billable AS billable
+            FROM
+                    staffing s
+                FULL OUTER JOIN absence a ON s.employee = a.employee_id
+                    AND s.date = a.date
+                LEFT JOIN projects p ON COALESCE(s.project, a.reason) = p.id
+            ),
 				employee_data AS (
 					SELECT
 						id,
@@ -37,7 +40,8 @@ BEGIN
 						jsonb_object_agg(joined_date,
 							percentage
 						ORDER BY
-							joined_date) AS days_in_week
+							joined_date) AS days_in_week,
+                        billable
 					FROM
 						joined_data
 				WHERE
@@ -49,23 +53,27 @@ BEGIN
 					id,
 					name,
 					DATE_TRUNC('week',
-						joined_date)),
+						joined_date),
+                    billable
+                ),
 				employee_projects AS (
 					SELECT
 						id,
 						name,
 						jsonb_object_agg(week,
-							days_in_week) AS week_data
+							days_in_week) AS week_data,
+                        billable
 					FROM
 						employee_data
 					GROUP BY
 						id,
-						name
+						name,
+                        billable
 )
 				SELECT
 					id,
 					jsonb_agg(jsonb_build_object ('name',
-							name) || week_data) AS subrows
+							name, 'billable', billable) || week_data) AS subrows
 				FROM
 					employee_projects
 				GROUP BY
