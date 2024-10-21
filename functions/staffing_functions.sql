@@ -9,7 +9,7 @@ CREATE OR REPLACE FUNCTION is_holiday(d date)
         RETURNS boolean AS
 $$
 BEGIN
-  RETURN EXISTS (SELECT * FROM holidays WHERE holidays.date = d);
+  RETURN EXISTS (SELECT * FROM public.holidays WHERE holidays.date = d);
 END
 $$ LANGUAGE plpgsql;
 
