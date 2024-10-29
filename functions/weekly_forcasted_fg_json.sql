@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION public.weekly_fg_json(start_date date, end_date date)
+CREATE OR REPLACE FUNCTION public.weekly_forcasted_fg_json(start_date date, end_date date)
  RETURNS jsonb
  LANGUAGE plpgsql
 AS $function$
