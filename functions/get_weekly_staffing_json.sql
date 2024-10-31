@@ -1,8 +1,8 @@
-CREATE OR REPLACE FUNCTION public.get_weekly_staffing_json(start_date date, end_date date)
- RETURNS jsonb
- LANGUAGE plpgsql
- STRICT
-AS $function$
+CREATE OR REPLACE FUNCTION public.get_weekly_staffing_json (start_date date, end_date date)
+	RETURNS jsonb
+	LANGUAGE plpgsql
+	STRICT
+	AS $function$
 DECLARE
 	result JSONB;
 BEGIN
@@ -15,65 +15,73 @@ BEGIN
 			end_date) e
 	LEFT JOIN (WITH joined_data AS (
 			SELECT
-				COALESCE(s.employee,
-					a.employee_id) AS id,
-				COALESCE(s.project,
-					a.reason) AS name,
-				COALESCE(s.date,
-					a.date) AS joined_date,
-				COALESCE(percentage,
-					100) AS percentage,
-                p.billable AS billable
-            FROM
-                    staffing s
-                FULL OUTER JOIN absence a ON s.employee = a.employee_id
-                    AND s.date = a.date
-                LEFT JOIN projects p ON COALESCE(s.project, a.reason) = p.id
-            ),
-				employee_data AS (
-					SELECT
-						id,
-						name,
-						TO_CHAR(DATE_TRUNC('week',
-								joined_date),
-							'IYYY-IW') AS week,
-						jsonb_object_agg(joined_date,
-							percentage
-						ORDER BY
-							joined_date) AS days_in_week,
-                        billable
-					FROM
-						joined_data
-				WHERE
-					joined_date BETWEEN DATE_TRUNC('week',
-						start_date::date)
-					AND(DATE_TRUNC('week',
-							end_date::date) + INTERVAL '6 days')
+				s.employee AS id,
+				s.project AS name,
+				s.date AS joined_date,
+				s.percentage AS percentage,
+				p.billable AS billable
+			FROM
+				staffing s
+				LEFT JOIN projects p ON s.project = p.id
+			WHERE
+				s.date BETWEEN DATE_TRUNC('week',
+					start_date::date)
+				AND(DATE_TRUNC('week',
+						end_date::date) + INTERVAL '6 days')
+			UNION ALL
+			SELECT
+				a.employee_id AS id,
+				a.reason AS name,
+				a.date AS joined_date,
+				100 AS percentage,
+				NULL AS billable
+			FROM
+				absence a
+			WHERE
+				a.date BETWEEN DATE_TRUNC('week',
+					start_date::date)
+				AND(DATE_TRUNC('week',
+						end_date::date) + INTERVAL '6 days')),
+			employee_data AS (
+				SELECT
+					id,
+					name,
+					TO_CHAR(DATE_TRUNC('week',
+							joined_date),
+						'IYYY-IW') AS week,
+					jsonb_object_agg(joined_date,
+						percentage
+					ORDER BY
+						joined_date) AS days_in_week,
+					billable
+				FROM
+					joined_data
 				GROUP BY
 					id,
 					name,
 					DATE_TRUNC('week',
 						joined_date),
-                    billable
-                ),
+					billable),
 				employee_projects AS (
 					SELECT
 						id,
 						name,
 						jsonb_object_agg(week,
 							days_in_week) AS week_data,
-                        billable
+						billable
 					FROM
 						employee_data
 					GROUP BY
 						id,
 						name,
-                        billable
+						billable
 )
 				SELECT
 					id,
 					jsonb_agg(jsonb_build_object ('name',
-							name, 'billable', billable) || week_data) AS subrows
+							name,
+							'billable',
+							billable) || week_data) AS subrows
 				FROM
 					employee_projects
 				GROUP BY
