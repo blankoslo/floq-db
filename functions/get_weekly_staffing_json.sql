@@ -7,7 +7,7 @@ DECLARE
 	result JSONB;
 BEGIN
 	SELECT
-		jsonb_agg(jsonb_build_object ('id', e.employee_id, 'name', concat_ws(' ', e.first_name, e.last_name), 'imageUrl', e.image_url, 'subRows', COALESCE(s.subrows, '[]'::jsonb))
+		jsonb_agg(jsonb_build_object ('id', e.employee_id, 'name', concat_ws(' ', e.first_name, e.last_name), 'role', e.role, 'imageUrl', e.image_url, 'subRows', COALESCE(s.subrows, '[]'::jsonb))
 		ORDER BY
 			e.first_name, e.last_name) INTO result
 	FROM
