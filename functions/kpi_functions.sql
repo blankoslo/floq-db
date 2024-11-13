@@ -328,12 +328,16 @@ BEGIN
   SELECT
     COUNT(*)*7.5::double precision as billable_hours
   FROM
-    staffing as s,
-    projects as p
+    staffing as s
+  JOIN projects p ON s.project = p.id
   WHERE
-    s.project = p.id AND
     p.billable = 'billable' AND
     s.date BETWEEN start_date AND end_date
+    AND NOT EXISTS (
+      SELECT 1
+      FROM absence a
+      WHERE a.employee_id = s.employee AND a.date = s.date
+    )
   );
 END
 $$ LANGUAGE plpgsql;

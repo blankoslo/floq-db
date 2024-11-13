@@ -112,10 +112,15 @@ AS $function$
 begin
   return query (
     select s.employee, count(s)
-    from staffing s, projects p
-    where s.project = p.id
-    and s.date between start_date and end_date
+    from staffing s
+    join projects p on s.project = p.id
+    where s.date between start_date and end_date
     and p.billable = 'billable'
+    and not exists (
+        select 1
+        from absence a
+        where a.employee_id = s.employee and a.date = s.date
+    )
     group by s.employee
   );
 end
@@ -129,10 +134,15 @@ AS $function$
 begin
   return query (
     select s.employee, count(s)
-    from staffing s, projects p
-    where s.project = p.id
-    and s.date between start_date and end_date
+    from staffing s
+    join projects p on s.project = p.id
+    where s.date between start_date and end_date
     and p.billable = 'nonbillable'
+    and not exists (
+        select 1
+        from absence a
+        where a.employee_id = s.employee and a.date = s.date
+    )
     group by s.employee
   );
 end
