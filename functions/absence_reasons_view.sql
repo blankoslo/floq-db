@@ -9,6 +9,7 @@ BEGIN
            OR reason = 'PER1000'
            OR reason = 'PER1001'
            OR reason = 'PER1002'
+           OR reason = 'FAG1000'
            OR reason = 'AVS'
          );
 END
