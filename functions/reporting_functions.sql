@@ -6,72 +6,93 @@ RETURNS TABLE (available_hours numeric, billable_hours numeric, nonbillable_hour
 $$
 BEGIN
   RETURN QUERY (
-SELECT
-    (SELECT COUNT(work_day) * 7.5 as avail_hours FROM possible_work_dates_per_employee(from_date, to_date)) AS available_hours,
-    SUM(CASE WHEN staff.billable = 'billable' :: time_status THEN 1 ELSE 0 END) * 7.5 AS billable_hours,
-    SUM(CASE WHEN staff.billable = 'nonbillable' :: time_status THEN 1 ELSE 0 END) * 7.5 AS nonbillable_hours,
-    SUM(CASE WHEN staff.billable = 'unavailable' :: time_status THEN 1 ELSE 0 END) * 7.5 AS unavailable_hours
-  FROM (SELECT * FROM staffing
-    JOIN projects ON (staffing.project = projects.id)
-    WHERE staffing.date BETWEEN from_date AND to_date) AS staff
-
+  WITH daily_hours AS (
+    SELECT
+      date,
+      employee,
+      SUM(CASE WHEN p.billable = 'billable' THEN s.percentage * 0.075 ELSE 0 END) AS billable,
+      SUM(CASE WHEN p.billable = 'nonbillable' THEN s.percentage * 0.075 ELSE 0 END) AS nonbillable,
+      SUM(CASE WHEN p.billable = 'unavailable' THEN s.percentage * 0.075 ELSE 0 END) AS unavailable
+    FROM staffing s
+    JOIN projects p ON s.project = p.id
+    WHERE s.date BETWEEN from_date AND to_date
+    GROUP BY date,employee
+  ),
+  absence_hours AS (
+    SELECT
+      date,
+      employee_id AS employee,
+      SUM(CASE WHEN ar.billable = 'unavailable' :: time_status THEN a.percentage * 0.075 ELSE 0 END) as unavailable,
+      SUM(CASE WHEN ar.billable = 'nonbillable' :: time_status THEN a.percentage * 0.075 ELSE 0 END) as nonbillable
+      FROM absence a
+      JOIN absence_reasons ar ON ar.id = a.reason
+      WHERE a.date BETWEEN from_date AND to_date
+      GROUP BY date, employee_id
+  ),
+  total_hours AS (
+    SELECT
+      COALESCE(d.date, a.date) AS date,
+      COALESCE(d.employee, a.employee) AS employee,
+      COALESCE(d.billable, 0) AS billable,
+      COALESCE(d.nonbillable, 0) + COALESCE(a.nonbillable, 0) AS nonbillable,
+      COALESCE(d.unavailable, 0) + COALESCE(a.unavailable, 0) AS unavailable
+    FROM daily_hours d
+    FULL OUTER JOIN absence_hours a
+      ON d.date = a.date AND d.employee = a.employee
+  )
+  SELECT
+    (SELECT SUM(available_hours) FROM available_hours_per_employee(from_date, to_date)) AS available_hours,
+    SUM(billable) AS billable_hours,
+    SUM(nonbillable) AS nonbillable_hours,
+    SUM(unavailable) AS unavailable_hours
+  FROM total_hours
   );
 END
 $$ LANGUAGE plpgsql;
 
 
-CREATE OR REPLACE FUNCTION possible_work_dates_per_employee(from_date date, to_date date)
-RETURNS TABLE (employee_id integer, work_day date) AS
+CREATE OR REPLACE FUNCTION available_hours_per_employee(from_date date, to_date date)
+RETURNS TABLE (employee_id integer, avail_hours numeric) AS
 $$
 BEGIN
   RETURN QUERY (
+    WITH possible_work_days AS (
+      SELECT
+        e.id AS employee_id,
+        generate_series::DATE AS work_day
+      FROM employees e
+      CROSS JOIN generate_series(from_date, to_date, '1 day'::interval)
+      WHERE is_weekday(generate_series::DATE)
+        AND NOT is_holiday(generate_series::DATE)
+        AND generate_series::DATE >= e.date_of_employment
+        AND (e.termination_date IS NULL OR generate_series::DATE <= e.termination_date)
+    ),
+    daily_availability AS (
     SELECT
-      x.emp_id,
-      x.work_day
-    FROM
-      (SELECT
-         e.id                    AS emp_id,
-         e.first_name,
-         e.last_name,
-         generate_series :: DATE AS work_day
-       FROM employees e
-         CROSS JOIN
-           generate_series(from_date, to_date, '1 day' :: interval)
-      ) AS x
-    WHERE
-      is_possible_work_day(x.emp_id, x.work_day)
-  );
-END
-$$ LANGUAGE plpgsql;
-
-
-CREATE OR REPLACE FUNCTION is_possible_work_day(in_employee_id numeric, in_date date)
-  RETURNS BOOLEAN AS
-$$
-BEGIN
-  RETURN (
-    is_weekday(in_date)
-    AND NOT is_holiday(in_date)
-    AND NOT EXISTS(SELECT *
-                   FROM employees e
-                   WHERE e.id = in_employee_id AND e.termination_date < in_date)
-    AND EXISTS(SELECT *
-               FROM employees e
-               WHERE e.id = in_employee_id AND e.date_of_employment <= in_date)
-    AND (
-      NOT EXISTS(SELECT *
-                 FROM staffing s
-                 WHERE s.employee = in_employee_id AND s.date = in_date)
-      OR EXISTS(SELECT *
-                FROM staffing s
-                  JOIN projects p ON s.project = p.id
-                WHERE s.employee = in_employee_id AND s.date = in_date AND p.billable != 'unavailable' :: time_status)
+      days.employee_id,
+      days.work_day,
+      COALESCE(s.percentage, 0) AS staffing_percentage,
+      COALESCE(a.percentage, 0) AS absence_percentage
+    FROM possible_work_days days
+    LEFT JOIN (
+          SELECT employee, date, SUM(percentage) AS percentage
+          FROM staffing s
+          JOIN projects p ON p.id = s.project
+          WHERE p.billable = 'unavailable'
+          GROUP BY employee, date
+      ) s ON days.employee_id = s.employee AND days.work_day = s.date
+      LEFT JOIN(
+          SELECT employee_id, date, SUM(percentage) AS percentage
+          FROM absence a
+          JOIN absence_reasons ar ON ar.id = a.reason
+          WHERE ar.billable = 'unavailable'
+          GROUP BY employee_id, date
+      ) a ON days.employee_id = a.employee_id AND days.work_day = a.date
     )
-    AND NOT EXISTS(SELECT *
-                   FROM absence a
-                     JOIN absence_reasons ar ON (ar.id = a.reason)
-                   WHERE
-                     a.employee_id = in_employee_id AND a.date = in_date AND ar.billable = 'unavailable' :: time_status)
+    SELECT
+      employee_id,
+      GREATEST(100 - staffing_percentage - absence_percentage, 0) * 0.075 AS available_hours
+    FROM daily_percentages
   );
 END
 $$ LANGUAGE plpgsql;
