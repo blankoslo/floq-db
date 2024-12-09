@@ -41,7 +41,7 @@ BEGIN
       ON d.date = a.date AND d.employee = a.employee
   )
   SELECT
-    (SELECT SUM(available_hours) FROM available_hours_per_employee(from_date, to_date)) AS available_hours,
+    (SELECT SUM(avail_hours) FROM available_hours_per_employee(from_date, to_date)) AS available_hours,
     SUM(billable) AS billable_hours,
     SUM(nonbillable) AS nonbillable_hours,
     SUM(unavailable) AS unavailable_hours
@@ -75,24 +75,24 @@ BEGIN
       COALESCE(a.percentage, 0) AS absence_percentage
     FROM possible_work_days days
     LEFT JOIN (
-          SELECT employee, date, SUM(percentage) AS percentage
+          SELECT s.employee, s.date, SUM(s.percentage) AS percentage
           FROM staffing s
           JOIN projects p ON p.id = s.project
           WHERE p.billable = 'unavailable'
-          GROUP BY employee, date
+          GROUP BY s.employee, s.date
       ) s ON days.employee_id = s.employee AND days.work_day = s.date
       LEFT JOIN(
-          SELECT employee_id, date, SUM(percentage) AS percentage
+          SELECT a.employee_id, a.date, SUM(a.percentage) AS percentage
           FROM absence a
           JOIN absence_reasons ar ON ar.id = a.reason
           WHERE ar.billable = 'unavailable'
-          GROUP BY employee_id, date
+          GROUP BY a.employee_id, a.date
       ) a ON days.employee_id = a.employee_id AND days.work_day = a.date
     )
     SELECT
-      employee_id,
-      GREATEST(100 - staffing_percentage - absence_percentage, 0) * 0.075 AS available_hours
-    FROM daily_percentages
+      da.employee_id,
+      GREATEST(100 - da.staffing_percentage - da.absence_percentage, 0) * 0.075 AS available_hours
+    FROM daily_availability da
   );
 END
 $$ LANGUAGE plpgsql;
