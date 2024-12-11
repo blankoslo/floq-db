@@ -18,21 +18,30 @@ BEGIN
 		LEFT JOIN staffing s ON s.date BETWEEN current_start_of_week::date
 			AND(current_start_of_week::date + 6)::date
 		JOIN employees e ON s.employee = e.id
-	WHERE
-		NOT EXISTS (
-			SELECT 1
+		WHERE NOT EXISTS (
+			SELECT
+				1
 			FROM (
-				SELECT employee_id, date, SUM(percentage) AS sum_percentage
-				FROM absence
-				GROUP BY employee_id, date
-			) a
-			WHERE a.date = s.date AND a.employee_id = s.employee AND sum_percentage >= 100
+				SELECT
+					employee_id,
+					date,
+					SUM(percentage) AS sum_percentage
+				FROM
+					absence
+				GROUP BY
+					employee_id,
+					date) a
+			WHERE
+				a.date = s.date
+				AND a.employee_id = s.employee
+				AND sum_percentage >= 100
 		)
 		GROUP BY
 			e.id,
 			start_of_week
 		ORDER BY
 			e.id,
-			start_of_week);
+			start_of_week
+	);
 END;
 $function$
