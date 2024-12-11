@@ -3,26 +3,36 @@ CREATE OR REPLACE FUNCTION public.worked_days_per_week(in_start_of_week date, in
  LANGUAGE plpgsql
 AS $function$
 BEGIN
- IF (in_number_of_weeks < 1) then RAISE numeric_value_out_of_range USING MESSAGE = 'number_of_weeks-parameter has to be greater than 0, but was ' || in_number_of_weeks; END IF;
-return query(SELECT
-        e.id as employee,
-        array_agg(s.project) as projects,
-        current_start_of_week::date as start_of_week,
-        count(s.date)::integer as days
-    FROM
-        generate_series(in_start_of_week::date, (in_start_of_week + (7 * in_number_of_weeks - 1))::date, '7 days'::interval) as current_start_of_week
-    LEFT JOIN
-        staffing s
-            on s.date between current_start_of_week::date AND (current_start_of_week::date + 6)::date
-    JOIN
-        employees e
-            on s.employee = e.id
-    group by
-        e.id,
-        start_of_week
-    order by
-        e.id,
-        start_of_week
-);
+	IF(in_number_of_weeks < 1) THEN
+		RAISE numeric_value_out_of_range
+		USING MESSAGE = 'number_of_weeks-parameter has to be greater than 0, but was ' || in_number_of_weeks;
+	END IF;
+	RETURN query (
+		SELECT
+			e.id AS employee,
+			array_agg(s.project) AS projects,
+			current_start_of_week::date AS start_of_week,
+			count(s.date)::integer AS days
+		FROM
+			generate_series(in_start_of_week::date, (in_start_of_week + (7 * in_number_of_weeks - 1))::date, '7 days'::interval) AS current_start_of_week
+		LEFT JOIN staffing s ON s.date BETWEEN current_start_of_week::date
+			AND(current_start_of_week::date + 6)::date
+		JOIN employees e ON s.employee = e.id
+	WHERE
+		NOT EXISTS (
+			SELECT 1
+			FROM (
+				SELECT employee_id, date, SUM(percentage) AS sum_percentage
+				FROM absence
+				GROUP BY employee_id, date
+			) a
+			WHERE a.date = s.date AND a.employee_id = s.employee AND sum_percentage >= 100
+		)
+		GROUP BY
+			e.id,
+			start_of_week
+		ORDER BY
+			e.id,
+			start_of_week);
 END;
 $function$
