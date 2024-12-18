@@ -320,24 +320,30 @@ $function$ LANGUAGE plpgsql;
 
 -- Visibility - forecasted FG (based of 12 next weeks)
 
-CREATE OR REPLACE FUNCTION planned_billable_hours(start_date date, end_date date)
-  RETURNS TABLE (billable_hours double precision) AS
-$$
+CREATE OR REPLACE FUNCTION public.planned_billable_hours(start_date date, end_date date)
+ RETURNS TABLE(billable_hours double precision)
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  billable_prc numeric;
+  absence_prc numeric;
 BEGIN
-  RETURN QUERY (
-  SELECT
-    COUNT(*)*7.5::double precision as billable_hours
-  FROM
-    staffing as s,
-    projects as p
-  WHERE
-    s.project = p.id AND
-    p.billable = 'billable' AND
-    s.date BETWEEN start_date AND end_date
-  );
-END
-$$ LANGUAGE plpgsql;
+  SELECT SUM(s.percentage)
+  INTO billable_prc
+  FROM staffing s
+  INNER JOIN projects p ON s.project = p.id
+  WHERE p.billable = 'billable'
+  AND s.date BETWEEN start_date AND end_date;
 
+  SELECT SUM(a.percentage)
+  INTO absence_prc
+  FROM absence a
+  WHERE a.date BETWEEN start_date AND end_date;
+
+  RETURN QUERY
+      SELECT GREATEST((COALESCE(billable_prc, 0)::INTEGER + COALESCE(absence_prc, 0)::INTEGER) - 100, 0) * 0.075::double precision;
+END
+$function$
 
 CREATE OR REPLACE FUNCTION forcasted_fg_in_period(start_date date, end_date date)
   RETURNS TABLE(planned_billable_hours double precision, available_hours double precision, percent double precision)
