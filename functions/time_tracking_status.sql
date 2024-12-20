@@ -259,3 +259,28 @@ begin
   );
 end
 $function$;
+
+CREATE OR REPLACE FUNCTION public.employee_weekly_fg(year integer, emp_id integer)
+RETURNS TABLE(week_number integer, week_start date, available_hours double precision, billable_hours double precision)
+LANGUAGE plpgsql
+AS $function$
+BEGIN
+  RETURN QUERY
+  SELECT
+    weeks.week_number,
+    weeks.week_start,
+    hours.available_hours,
+    hours.billable_hours
+  FROM (
+    SELECT
+      generate_series(1, 53) AS week_number,
+      to_date(concat(year, lpad(generate_series(1, 53)::text, 2, '0')), 'iyyyiw') AS week_start
+  ) AS weeks
+  JOIN LATERAL (
+    SELECT
+      fg.available_hours,
+      fg.billable_hours
+    FROM public.fg_for_employee(emp_id, weeks.week_start, weeks.week_start + 6) AS fg
+  ) AS hours ON true;
+END;
+$function$;
