@@ -128,11 +128,11 @@ SELECT
 	sum(tt.business_hours)
 FROM
   (
-  	SELECT 
+  	SELECT
       business_hours
-    FROM 
+    FROM
 		(
-			SELECT 
+			SELECT
         employees.id AS id,
         employees.first_name,
         employees.date_of_employment,
@@ -141,7 +141,7 @@ FROM
         employees
 		) AS e,
 		business_hours(greatest(in_from_date, e.date_of_employment),least(e.termination_date, in_to_date))
-  ) tt  
+  ) tt
  );
 END
 $$ LANGUAGE plpgsql;
@@ -182,8 +182,8 @@ SELECT
 	tt.unavailable
 FROM
   (
-	select sum(minutes/60.0) AS unavailable from projects join time_entry on time_entry.project = projects.id where projects.billable='unavailable'	and time_entry.date >= in_from_date and time_entry.date <= in_to_date 
-  ) tt  
+	select sum(minutes/60.0) AS unavailable from projects join time_entry on time_entry.project = projects.id where projects.billable='unavailable'	and time_entry.date >= in_from_date and time_entry.date <= in_to_date
+  ) tt
  );
 END
 $$ LANGUAGE plpgsql;
@@ -192,7 +192,7 @@ CREATE OR REPLACE FUNCTION month_dates(in_from_date date, in_to_date date, in_in
 RETURNS TABLE ( to_date DATE, from_date DATE) AS
 $$
 BEGIN
-  RETURN QUERY select date_trunc('DAY', monat - interval '1' day)::DATE, date_trunc('MONTH', monat - in_interval)::DATE from 
+  RETURN QUERY select date_trunc('DAY', monat - interval '1' day)::DATE, date_trunc('MONTH', monat - in_interval)::DATE from
     (select * from generate_series(date_trunc('MONTH', in_from_date), date_trunc('MONTH', in_to_date),'1 month') AS monat) AS mt order by 1;
     END
 $$ LANGUAGE plpgsql;
@@ -201,28 +201,28 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION unavailable_staffing_hours(start_date date, end_date date)
 RETURNS TABLE (
-  unavailable_hours numeric
+unavailable_hours numeric
 ) AS
 $$
 BEGIN
   RETURN QUERY (
 
 SELECT
-  tt.unavailable
+  tt.unavailable
 FROM
   (
     SELECT
       7.5 * count(*) AS unavailable
     FROM
-      staffing 
+      staffing
     JOIN projects ON
       staffing.project = projects.id
-    WHERE 
+    WHERE
       billable='unavailable' AND
       staffing.date <= end_date AND
       staffing.date >= start_date
-  ) tt  
- );
+  ) tt
+);
 END
 $$ LANGUAGE plpgsql;
 
@@ -261,7 +261,7 @@ begin
  return query (
    SELECT
     sum(minutes)/60::double precision AS project_hours
-   FROM 
+   FROM
     time_entry
    WHERE
     time_entry.project = project_code AND
@@ -320,24 +320,30 @@ $function$ LANGUAGE plpgsql;
 
 -- Visibility - forecasted FG (based of 12 next weeks)
 
-CREATE OR REPLACE FUNCTION planned_billable_hours(start_date date, end_date date)
-  RETURNS TABLE (billable_hours double precision) AS
-$$
+CREATE OR REPLACE FUNCTION public.planned_billable_hours(start_date date, end_date date)
+ RETURNS TABLE(billable_hours double precision)
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  billable_prc numeric;
+  absence_prc numeric;
 BEGIN
-  RETURN QUERY (
-  SELECT
-    COUNT(*)*7.5::double precision as billable_hours
-  FROM
-    staffing as s,
-    projects as p
-  WHERE
-    s.project = p.id AND
-    p.billable = 'billable' AND
-    s.date BETWEEN start_date AND end_date
-  );
-END
-$$ LANGUAGE plpgsql;
+  SELECT SUM(s.percentage)
+  INTO billable_prc
+  FROM staffing s
+  INNER JOIN projects p ON s.project = p.id
+  WHERE p.billable = 'billable'
+  AND s.date BETWEEN start_date AND end_date;
 
+  SELECT SUM(a.percentage)
+  INTO absence_prc
+  FROM absence a
+  WHERE a.date BETWEEN start_date AND end_date;
+
+  RETURN QUERY
+      SELECT GREATEST((COALESCE(billable_prc, 0)::INTEGER + COALESCE(absence_prc, 0)::INTEGER) - 100, 0) * 0.075::double precision;
+END
+$function$
 
 CREATE OR REPLACE FUNCTION forcasted_fg_in_period(start_date date, end_date date)
   RETURNS TABLE(planned_billable_hours double precision, available_hours double precision, percent double precision)
@@ -376,12 +382,12 @@ begin
 end
 $function$;
 
--- Accumulated reconciliation for whole company 
+-- Accumulated reconciliation for whole company
 create or replace function accumulated_reconciliation(from_date date, to_date date)
 returns table (write_off numeric , hours bigint, amount numeric, amount_net numeric, count bigint, subcontractor_hours bigint, subcontractor_expense numeric, other_expense numeric) as
 $$
 begin
-return query (select 
+return query (select
     SUM(summed_write_off.minutes)/60 as write_off,
     SUM(invoice_balance.minutes)/60 as hours,
     SUM(invoice_balance.amount) as total_amount,
@@ -549,12 +555,12 @@ returns table (hours numeric) as
 $$
 begin
 return query (
-SELECT 
+SELECT
     COALESCE(SUM(time_entry.minutes)/60.0, 0) AS hours
 FROM
     projects JOIN time_entry ON time_entry.project = projects.id
 WHERE
-    date >= from_date 
+    date >= from_date
     AND date <= to_date
     AND deductable = true
     );
@@ -627,7 +633,7 @@ $$ LANGUAGE plpgsql;
 -- and is the ONLY employee to do so for current and preivous month (2 months aggregate)
 
 CREATE OR REPLACE FUNCTION unaccompanied_customer_involvement_kpi(in_from_date date, in_to_date date)
-RETURNS TABLE (from_date date, to_date date, percent double precision) AS 
+RETURNS TABLE (from_date date, to_date date, percent double precision) AS
 $$
 BEGIN
 	RETURN QUERY (
@@ -635,7 +641,7 @@ BEGIN
 			x.from_date,
 			x.to_date,
 			COUNT(ae.employee_count) / t.employee_count :: double precision
-		FROM 
+		FROM
 			month_dates(in_from_date, in_to_date, interval '2' month) x,
 			unaccompanied_customer_involvement_in_period(x.from_date, x.to_date) ae,
 			number_of_employees_in_period(x.from_date, x.to_date) t
@@ -647,16 +653,16 @@ $$ LANGUAGE plpgsql;
 
 
 CREATE OR REPLACE FUNCTION unaccompanied_customer_involvement_in_period(from_date date, to_date date)
-RETURNS TABLE (customer_id text, employee_count integer) AS 
-$$ 
-BEGIN 
+RETURNS TABLE (customer_id text, employee_count integer) AS
+$$
+BEGIN
 	RETURN QUERY (
 		SELECT
-			qq.customer_id::text, 
+			qq.customer_id::text,
 			sum(employee_id)::integer as employee_id
 		FROM
 			(
-			SELECT 
+			SELECT
 				*,
 				(q.billable_hours / (q.business_hours - q.unavailable_hours)) AS fg
 			FROM
@@ -690,17 +696,17 @@ $$ LANGUAGE plpgsql;
 
 
 CREATE OR REPLACE FUNCTION number_of_employees_in_period(from_date date, to_date date)
-RETURNS TABLE (employee_count bigint) AS 
-$$ 
-BEGIN 
+RETURNS TABLE (employee_count bigint) AS
+$$
+BEGIN
 	RETURN QUERY (
-		SELECT 
+		SELECT
 			COUNT(*)
-		FROM 
+		FROM
 			employees
-		WHERE 
-			date_of_employment <= to_date AND 
-			(termination_date >= from_date or termination_date is null) AND 
+		WHERE
+			date_of_employment <= to_date AND
+			(termination_date >= from_date or termination_date is null) AND
 			has_permanent_position is TRUE
 	);
 END
@@ -738,5 +744,3 @@ RETURN QUERY (
     );
 end
 $$ LANGUAGE plpgsql;
-
-
