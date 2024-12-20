@@ -273,8 +273,8 @@ BEGIN
     hours.billable_hours
   FROM (
     SELECT
-      generate_series(1, 52) AS week_number,
-      to_date(concat(year, lpad(generate_series(1, 52)::text, 2, '0')), 'iyyyiw') AS week_start
+      generate_series(1, 53) AS week_number,
+      to_date(concat(year, lpad(generate_series(1, 53)::text, 2, '0')), 'iyyyiw') AS week_start
   ) AS weeks
   JOIN LATERAL (
     SELECT
