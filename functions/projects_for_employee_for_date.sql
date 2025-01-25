@@ -29,10 +29,10 @@ absence_entries AS (
 )
 SELECT 
     COALESCE(sp.id, p.id, ae.project) as id,
-    COALESCE(sp.name, p.name, ae.name) as name,
-    COALESCE(sp.customer_name, c.name, ae.customer_name) as customer_name,
-    COALESCE(te.minutes, ae.minutes, 0)::integer as minutes,
-    COALESCE(sp.percentage, ae.percentage, 0) as percentage
+    MAX(COALESCE(sp.name, p.name, ae.name)) as name,
+    MAX(COALESCE(sp.customer_name, c.name, ae.customer_name)) as customer_name,
+    SUM(COALESCE(te.minutes, 0))::integer as minutes,
+    SUM(COALESCE(sp.percentage, ae.percentage, 0)) as percentage_staffed
 FROM staffed_projects sp
 FULL OUTER JOIN time_entries te ON te.project = sp.project
 FULL OUTER JOIN projects p ON p.id = te.project
@@ -40,5 +40,6 @@ FULL OUTER JOIN absence_entries ae ON ae.project = sp.project
 LEFT JOIN customers c ON p.customer = c.id
 WHERE te.project IS NOT NULL 
    OR sp.project IS NOT NULL 
-   OR ae.project IS NOT NULL;
+   OR ae.project IS NOT NULL
+GROUP BY COALESCE(sp.id, p.id, ae.project);
 $function$;
