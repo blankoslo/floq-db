@@ -93,3 +93,4 @@ update_view_employee_project_responsible 2024-06-13T08:21:07Z root <root@86f76b9
 alter_time_entry_use_btree_index_and_add_employee_date_composite_index 2024-07-10T14:13:21Z Isak Grande Bjørnstad <isak@Isaks-MacBook-Pro.local> # Change index type on time_entry from brim to btree. Also add a (employee, date) composite index
 alter_table_staffing_add_staffing_percentage 2024-09-27T09:55:56Z Petter Juterud Barhaugen <petter@Petter-sin-MacBook-Pro> # Add staffing percentage and allow multiple projects per employee per day
 alter_table_absence_add_percentage 2024-11-28T12:03:26Z Petter Juterud Barhaugen <petter@Petter-sin-MacBook-Pro> # Add percentage column to absence
+remove_absence_from_staffing 2025-01-23T14:00:30Z Simen Viken Grini <simen.grini@blank.no> # move all absence from the staffing table to the absence table
