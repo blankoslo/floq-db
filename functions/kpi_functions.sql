@@ -154,17 +154,18 @@ $$
 BEGIN
   RETURN QUERY (
     SELECT
-        sum_business_hours - unavailable_hours :: double precision AS sum_available_hours,
-        SUM(minutes/60.0)  :: numeric AS sum_billable_hours
+        SUM((1 - COALESCE(a.absence_percentage, 0)) * s.staffing_percentage * 7.5) AS sum_available_hours,
+        SUM(CASE WHEN p.billable = 'billable' THEN (t.minutes / 60.0) ELSE 0 END) AS sum_billable_hours
     FROM
-      sum_business_hours(from_date, to_date),
-      unavailable_time_entry_hours(from_date, to_date),
-      time_entry
-    JOIN projects ON
-      projects.id = time_entry.project AND
-      projects.billable = 'billable' AND
-      time_entry.date <= to_date and time_entry.date >= from_date
-    GROUP BY (sum_business_hours, unavailable_hours)) LIMIT 1;
+        employees e
+    LEFT JOIN staffing s ON e.id = s.employee AND s.date BETWEEN from_date AND to_date
+    LEFT JOIN absence a ON e.id = a.employee_id AND a.date = s.date
+    LEFT JOIN time_entry t ON e.id = t.employee AND t.date = s.date
+    LEFT JOIN projects p ON t.project = p.id
+    WHERE
+        e.date_of_employment <= to_date AND (e.termination_date >= from_date OR e.termination_date IS NULL)
+    GROUP BY e.id
+  );
 END
 $$ LANGUAGE plpgsql;
 
@@ -200,29 +201,19 @@ $$ LANGUAGE plpgsql;
 
 
 CREATE OR REPLACE FUNCTION unavailable_staffing_hours(start_date date, end_date date)
-RETURNS TABLE (
-unavailable_hours numeric
-) AS
+RETURNS TABLE (unavailable_hours numeric) AS
 $$
 BEGIN
   RETURN QUERY (
-
-SELECT
-  tt.unavailable
-FROM
-  (
     SELECT
-      7.5 * count(*) AS unavailable
+      SUM(s.staffing_percentage * 7.5) AS unavailable_hours
     FROM
-      staffing
-    JOIN projects ON
-      staffing.project = projects.id
+      staffing s
+    JOIN projects p ON s.project = p.id
     WHERE
-      billable='unavailable' AND
-      staffing.date <= end_date AND
-      staffing.date >= start_date
-  ) tt
-);
+      p.billable = 'unavailable' AND
+      s.date BETWEEN start_date AND end_date
+  );
 END
 $$ LANGUAGE plpgsql;
 
@@ -532,19 +523,21 @@ $$ LANGUAGE plpgsql;
 
 
 CREATE OR REPLACE FUNCTION forcasted_available_hours(start_date date, end_date date)
-  RETURNS TABLE (all_hours double precision, unavail_staffing_hours double precision, unavail_absence_hours double precision, available_hours double precision) AS
+RETURNS TABLE (all_hours double precision, unavailable_hours double precision, available_hours double precision) AS
 $$
 BEGIN
   RETURN QUERY (
-  SELECT
-    ewd.hours::double precision as all_hours,
-    usd.hours::double precision as unavail_staffing_hours,
-    abs.hours::double precision as unavail_absence_hours,
-    (ewd.hours - usd.hours - abs.hours)::double precision as available_hours
-  FROM
-    (SELECT COUNT(work_date) * 7.5 as hours FROM all_employee_work_dates_in_period(start_date, end_date)) AS ewd,
-    (SELECT COUNT(work_day) * 7.5 as hours FROM unavilable_staffing_dates_in_period(start_date, end_date)) AS usd,
-    (SELECT COUNT(absence_date) * 7.5 as hours FROM all_absence_dates_in_period(start_date, end_date)) AS abs
+    SELECT
+      SUM(7.5) AS all_hours,
+      SUM(CASE WHEN p.billable = 'unavailable' THEN s.staffing_percentage * 7.5 ELSE 0 END) AS unavailable_hours,
+      SUM((1 - COALESCE(a.absence_percentage, 0)) * s.staffing_percentage * 7.5) AS available_hours
+    FROM
+      employees e
+    LEFT JOIN staffing s ON e.id = s.employee AND s.date BETWEEN start_date AND end_date
+    LEFT JOIN absence a ON e.id = a.employee_id AND a.date = s.date
+    LEFT JOIN projects p ON s.project = p.id
+    WHERE
+      e.date_of_employment <= end_date AND (e.termination_date >= start_date OR e.termination_date IS NULL)
   );
 END
 $$ LANGUAGE plpgsql;
