@@ -46,3 +46,6 @@ In the following files in `./sqitch/deploy`, change the `PASSWORD` from `NULL` t
     - `CREATE USER read_only WITH PASSWORD 'password';`
     - `CREATE USER trak WITH PASSWORD 'password';`
     - `CREATE USER trak_read_only WITH PASSWORD 'password';`
+   
+## Script
+An alternative way to get the tables and data from one of the environments is using this [script](https://github.com/blankoslo/floq-db-replicate).
