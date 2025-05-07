@@ -288,3 +288,81 @@ BEGIN
   ) AS hours ON true;
 END;
 $function$;
+
+CREATE OR REPLACE FUNCTION public.time_tracking_status_by_week(start_date date, end_date date)
+RETURNS TABLE(
+  name text,
+  email text,
+  week_start date,
+  available_hours double precision,
+  staffed_billable_hours double precision,
+  billable_hours double precision,
+  staffed_nonbillable_hours double precision,
+  non_billable_hours double precision,
+  staffed_unavailable_hours double precision,
+  unavailable_hours double precision,
+  unregistered_days integer,
+  last_date date,
+  last_created date
+)
+LANGUAGE plpgsql
+STABLE STRICT
+AS $$
+BEGIN
+  RETURN QUERY
+  WITH weeks AS (
+    SELECT 
+      date_trunc('week', d)::date AS week_start,
+      (date_trunc('week', d) + interval '6 days')::date AS week_end
+    FROM generate_series(start_date, end_date, interval '1 week') AS d
+  )
+  SELECT
+    e.first_name || ' ' || e.last_name AS name,
+    e.email,
+    w.week_start,
+    business_hours(greatest(e.date_of_employment, w.week_start), least(e.termination_date, w.week_end)) 
+      - coalesce(t.unavailable_hours / 60.0, 0.0)::float8 AS available_hours,
+    coalesce(t.staffed_billable_days * 7.5, 0.0)::float8 AS staffed_billable_hours,
+    coalesce(t.billable_hours / 60.0, 0.0)::float8 AS billable_hours,
+    coalesce(t.staffed_nonbillable_days * 7.5, 0.0)::float8 AS staffed_nonbillable_hours,
+    coalesce(t.non_billable_hours / 60.0, 0.0)::float8 AS non_billable_hours,
+    coalesce(t.staffed_unavailable_days * 7.5, 0.0)::float8 AS staffed_unavailable_hours,
+    coalesce(t.unavailable_hours / 60.0, 0.0)::float8 AS unavailable_hours,
+    unregistered_days(w.week_start, w.week_end, e.id) AS unregistered_days,
+    ld.date,
+    lc.created::date
+  FROM weeks w
+  CROSS JOIN employees e
+  LEFT JOIN LATERAL (
+  SELECT
+    coalesce(uah.sum, 0.0) AS unavailable_hours,
+    coalesce(bh.sum, 0.0) AS billable_hours,
+    coalesce(nbh.sum, 0.0) AS non_billable_hours,
+    coalesce(sbd.days, 0.0) AS staffed_billable_days,
+    coalesce(snd.days, 0.0) AS staffed_nonbillable_days,
+    coalesce(sud.days, 0.0) AS staffed_unavailable_days
+  FROM unavailable_hours_for_employees(w.week_start, w.week_end) uah
+  LEFT JOIN billable_hours_for_employees(w.week_start, w.week_end) bh ON bh.id = e.id
+  LEFT JOIN nonbillable_hours_for_employees(w.week_start, w.week_end) nbh ON nbh.id = e.id
+  LEFT JOIN staffed_billable_days_for_employees(w.week_start, w.week_end) sbd ON sbd.id = e.id
+  LEFT JOIN staffed_nonbillable_days_for_employees(w.week_start, w.week_end) snd ON snd.id = e.id
+  LEFT JOIN staffed_unavailable_days_for_employees(w.week_start, w.week_end) sud ON sud.id = e.id
+  WHERE uah.id = e.id
+
+) t ON true
+  LEFT JOIN (
+    SELECT DISTINCT ON (te.employee) te.employee, te.date
+    FROM time_entry te
+    ORDER BY te.employee, te.date DESC
+  ) ld ON ld.employee = e.id
+  LEFT JOIN (
+    SELECT DISTINCT ON (te.employee) te.employee, te.created
+    FROM time_entry te
+    ORDER BY te.employee, te.created DESC
+  ) lc ON lc.employee = e.id
+  WHERE e.date_of_employment <= w.week_end
+    AND (e.termination_date IS NULL OR e.termination_date >= w.week_start)
+  ORDER BY week_start, name;
+END;
+$$;
+
