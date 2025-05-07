@@ -321,35 +321,34 @@ BEGIN
     e.email,
     w.week_start,
     business_hours(greatest(e.date_of_employment, w.week_start), least(e.termination_date, w.week_end)) 
-      - coalesce(t.unavailable_hours / 60.0, 0.0)::float8 AS available_hours,
-    coalesce(t.staffed_billable_days * 7.5, 0.0)::float8 AS staffed_billable_hours,
-    coalesce(t.billable_hours / 60.0, 0.0)::float8 AS billable_hours,
-    coalesce(t.staffed_nonbillable_days * 7.5, 0.0)::float8 AS staffed_nonbillable_hours,
-    coalesce(t.non_billable_hours / 60.0, 0.0)::float8 AS non_billable_hours,
-    coalesce(t.staffed_unavailable_days * 7.5, 0.0)::float8 AS staffed_unavailable_hours,
-    coalesce(t.unavailable_hours / 60.0, 0.0)::float8 AS unavailable_hours,
+      - coalesce(t.unavailable_hours / 60.0, 0.0)::double precision AS available_hours,
+    coalesce(t.staffed_billable_days * 7.5, 0.0)::double precision AS staffed_billable_hours,
+    coalesce(t.billable_hours / 60.0, 0.0)::double precision AS billable_hours,
+    coalesce(t.staffed_nonbillable_days * 7.5, 0.0)::double precision AS staffed_nonbillable_hours,
+    coalesce(t.non_billable_hours / 60.0, 0.0)::double precision AS non_billable_hours,
+    coalesce(t.staffed_unavailable_days * 7.5, 0.0)::double precision AS staffed_unavailable_hours,
+    coalesce(t.unavailable_hours / 60.0, 0.0)::double precision AS unavailable_hours,
     unregistered_days(w.week_start, w.week_end, e.id) AS unregistered_days,
     ld.date,
     lc.created::date
   FROM weeks w
   CROSS JOIN employees e
   LEFT JOIN LATERAL (
-  SELECT
-    coalesce(uah.sum, 0.0) AS unavailable_hours,
-    coalesce(bh.sum, 0.0) AS billable_hours,
-    coalesce(nbh.sum, 0.0) AS non_billable_hours,
-    coalesce(sbd.days, 0.0) AS staffed_billable_days,
-    coalesce(snd.days, 0.0) AS staffed_nonbillable_days,
-    coalesce(sud.days, 0.0) AS staffed_unavailable_days
-  FROM unavailable_hours_for_employees(w.week_start, w.week_end) uah
-  LEFT JOIN billable_hours_for_employees(w.week_start, w.week_end) bh ON bh.id = e.id
-  LEFT JOIN nonbillable_hours_for_employees(w.week_start, w.week_end) nbh ON nbh.id = e.id
-  LEFT JOIN staffed_billable_days_for_employees(w.week_start, w.week_end) sbd ON sbd.id = e.id
-  LEFT JOIN staffed_nonbillable_days_for_employees(w.week_start, w.week_end) snd ON snd.id = e.id
-  LEFT JOIN staffed_unavailable_days_for_employees(w.week_start, w.week_end) sud ON sud.id = e.id
-  WHERE uah.id = e.id
-
-) t ON true
+    SELECT
+      coalesce(uah.id, bh.id, nbh.id, sbd.id, snd.id, sud.id) AS employee_id,
+      coalesce(uah.sum, 0.0)::double precision AS unavailable_hours,
+      coalesce(bh.sum, 0.0)::double precision AS billable_hours,
+      coalesce(nbh.sum, 0.0)::double precision AS non_billable_hours,
+      coalesce(sbd.days, 0.0)::double precision AS staffed_billable_days,
+      coalesce(snd.days, 0.0)::double precision AS staffed_nonbillable_days,
+      coalesce(sud.days, 0.0)::double precision AS staffed_unavailable_days
+    FROM (SELECT * FROM unavailable_hours_for_employees(w.week_start, w.week_end)) uah
+    FULL OUTER JOIN billable_hours_for_employees(w.week_start, w.week_end) bh ON uah.id = bh.id
+    FULL OUTER JOIN nonbillable_hours_for_employees(w.week_start, w.week_end) nbh ON coalesce(uah.id, bh.id) = nbh.id
+    FULL OUTER JOIN staffed_billable_days_for_employees(w.week_start, w.week_end) sbd ON coalesce(uah.id, bh.id, nbh.id) = sbd.id
+    FULL OUTER JOIN staffed_nonbillable_days_for_employees(w.week_start, w.week_end) snd ON coalesce(uah.id, bh.id, nbh.id, sbd.id) = snd.id
+    FULL OUTER JOIN staffed_unavailable_days_for_employees(w.week_start, w.week_end) sud ON coalesce(uah.id, bh.id, nbh.id, sbd.id, snd.id) = sud.id
+  ) t ON t.employee_id = e.id
   LEFT JOIN (
     SELECT DISTINCT ON (te.employee) te.employee, te.date
     FROM time_entry te
@@ -365,4 +364,5 @@ BEGIN
   ORDER BY week_start, name;
 END;
 $$;
+
 
