@@ -12,7 +12,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_DB=${POSTGRES_DB}
   floq-api:
-    image: postgrest/postgrest:v11.1.0
+    image: postgrest/postgrest:v11.2.2
     ports:
       - "3003:3000"
     environment:
