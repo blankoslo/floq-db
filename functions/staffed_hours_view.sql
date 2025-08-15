@@ -25,7 +25,7 @@ absence_totals AS (
 SELECT
 	COALESCE(s.employee, a.employee) AS employee,
 	COALESCE(s.date, a.date) AS date,
-	COALESCE((s.staffing_percentage * 0.375) - (GREATEST(s.staffing_percentage + a.absence_percentage - 100, 0)) * 0.375, 0) AS total_staffed_hours
+	GREATEST(COALESCE((s.staffing_percentage * 0.075) - (GREATEST(s.staffing_percentage + a.absence_percentage - 100, 0)) * 0.075, 0), 0) AS total_staffed_hours
 FROM
 	staffing_totals s
 	FULL OUTER JOIN absence_totals a ON s.employee = a.employee
