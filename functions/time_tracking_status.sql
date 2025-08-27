@@ -156,9 +156,22 @@ end
 $function$;
 
 CREATE OR REPLACE FUNCTION public.time_tracking_status_with_staffing(start_date date, end_date date)
- RETURNS TABLE(name text, email text, available_hours double precision, staffed_billable_hours double precision, billable_hours double precision, staffed_nonbillable_hours double precision, non_billable_hours double precision, staffed_unavailable_hours double precision, unavailable_hours double precision, unregistered_days integer, last_date date, last_created date)
- LANGUAGE plpgsql
- STABLE STRICT
+RETURNS TABLE(
+    name text,
+    email text,
+    available_hours double precision,
+    staffed_billable_hours double precision,
+    billable_hours double precision,
+    staffed_nonbillable_hours double precision,
+    non_billable_hours double precision,
+    staffed_unavailable_hours double precision,
+    unavailable_hours double precision,
+    unregistered_days integer,
+    last_date date,
+    last_created date
+)
+LANGUAGE plpgsql
+STABLE STRICT
 AS $function$
 begin
   return query (
@@ -232,7 +245,7 @@ CREATE OR REPLACE FUNCTION public.fg_for_employee(emp_id integer, start_date dat
 AS $function$
 begin
   return query (
-    select 
+    select
     business_hours(greatest(e.date_of_employment, start_date), least(e.termination_date, end_date)) - coalesce(sum(employee.unavailable_hours)/60.0, 0.0)::float8 as available_hours,
 	  coalesce(sum(employee.billable_hours)/60.0, 0.0)::float8 as billable_hours
 	from employees e
@@ -268,7 +281,7 @@ DECLARE
   weeks_in_year integer;
 BEGIN
   SELECT EXTRACT(WEEK FROM MAKE_DATE(year, 12, 28))::integer INTO weeks_in_year;
-  
+
   RETURN QUERY
   SELECT
     weeks.week_number,

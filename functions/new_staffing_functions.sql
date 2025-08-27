@@ -146,14 +146,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION public.is_employed_at_date(employee_id integer, check_date date)
-RETURNS boolean
-AS $$
-    SELECT date_of_employment <= check_date
-        AND (termination_date IS NULL OR termination_date >= check_date)
-    FROM employees
-    WHERE id = employee_id;
-$$ LANGUAGE sql;
 
 -- Insert a period of staffing to the staffing table
 CREATE OR REPLACE FUNCTION public.insert_staffing(
