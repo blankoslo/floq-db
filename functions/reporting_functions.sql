@@ -8,9 +8,9 @@ BEGIN
   RETURN QUERY (
 SELECT
     (SELECT COUNT(work_day) * 7.5 as avail_hours FROM possible_work_dates_per_employee(from_date, to_date)) AS available_hours,
-    SUM(CASE WHEN staff.billable = 'billable' :: time_status THEN 1 ELSE 0 END) * 7.5 * staff.percentage AS billable_hours,
-    SUM(CASE WHEN staff.billable = 'nonbillable' :: time_status THEN 1 ELSE 0 END) * 7.5 * staff.percentage AS nonbillable_hours,
-    SUM(CASE WHEN staff.billable = 'unavailable' :: time_status THEN 1 ELSE 0 END) * 7.5 * staff.percentage AS unavailable_hours
+    SUM(CASE WHEN staff.billable = 'billable' :: time_status THEN 1 ELSE 0 END) * 7.5 AS billable_hours,
+    SUM(CASE WHEN staff.billable = 'nonbillable' :: time_status THEN 1 ELSE 0 END) * 7.5 AS nonbillable_hours,
+    SUM(CASE WHEN staff.billable = 'unavailable' :: time_status THEN 1 ELSE 0 END) * 7.5 AS unavailable_hours
   FROM (SELECT * FROM staffing
     JOIN projects ON (staffing.project = projects.id)
     WHERE staffing.date BETWEEN from_date AND to_date) AS staff
