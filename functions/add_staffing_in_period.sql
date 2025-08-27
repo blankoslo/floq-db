@@ -13,17 +13,10 @@ BEGIN
 
 	IF is_absence THEN
 		RETURN QUERY (
-			WITH RECURSIVE date_range AS (
-				SELECT start_date::date AS cur_date
-				UNION ALL
-				SELECT cur_date + 1
-				FROM date_range
-				WHERE cur_date < end_date::date
-			),
-			weekdays AS (
-				SELECT cur_date
-				FROM date_range
-				WHERE EXTRACT(DOW FROM cur_date) BETWEEN 1 AND 5
+		WITH weekdays AS (
+				SELECT d::date AS cur_date
+				FROM generate_series(start_date, end_date, '1 day') AS d
+				WHERE is_weekday_new(d)
 			),
 			new_absence AS (
 				INSERT INTO absence (employee_id, date, reason, percentage)
@@ -41,17 +34,10 @@ BEGIN
 		);
 	ELSE
 		RETURN QUERY (
-				WITH RECURSIVE date_range AS (
-					SELECT start_date::date AS cur_date
-					UNION ALL
-					SELECT cur_date + 1
-					FROM date_range
-					WHERE cur_date < end_date::date
-				),
-				weekdays AS (
-					SELECT cur_date
-					FROM date_range
-					WHERE EXTRACT(DOW FROM cur_date) BETWEEN 1 AND 5
+				WITH weekdays AS (
+					SELECT d::date AS cur_date
+					FROM generate_series(start_date, end_date, '1 day') AS d
+					WHERE is_weekday_new(d)
 				),
 				new_staffing AS (
 					INSERT INTO staffing (employee, date, project, percentage)

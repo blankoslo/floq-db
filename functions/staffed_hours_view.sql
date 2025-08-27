@@ -1,32 +1,44 @@
-CREATE OR REPLACE VIEW staffed_hours AS
-(WITH staffing_totals AS (
-	SELECT
-		employee,
-		date,
-		COALESCE(SUM(percentage), 0) AS staffing_percentage
-	FROM
-		staffing
-	WHERE NOT is_holiday(date)
-	GROUP BY
-		employee,
-		date
-),
-absence_totals AS (
-	SELECT
-		employee_id AS employee,
-		date,
-		COALESCE(SUM(percentage), 0) AS absence_percentage
-	FROM
-		absence
-	GROUP BY
-		employee_id,
-		date
-)
-SELECT
-	COALESCE(s.employee, a.employee) AS employee,
-	COALESCE(s.date, a.date) AS date,
-	GREATEST(COALESCE((s.staffing_percentage * 0.075) - (GREATEST(s.staffing_percentage + a.absence_percentage - 100, 0)) * 0.075, 0), 0) AS total_staffed_hours
-FROM
-	staffing_totals s
-	FULL OUTER JOIN absence_totals a ON s.employee = a.employee
-	AND s.date = a.date);
+-- CREATE OR REPLACE VIEW staffed_hours AS
+-- (WITH staffing_totals AS (
+-- 	SELECT
+-- 		employee,
+-- 		date,
+-- 		COALESCE(SUM(percentage), 0) AS staffing_percentage
+-- 	FROM
+-- 		staffing
+-- 	WHERE NOT is_holiday(date)
+-- 	GROUP BY
+-- 		employee,
+-- 		date
+-- ),
+-- absence_totals AS (
+-- 	SELECT
+-- 		employee_id AS employee,
+-- 		date,
+-- 		COALESCE(SUM(percentage), 0) AS absence_percentage
+-- 	FROM
+-- 		absence
+-- 	GROUP BY
+-- 		employee_id,
+-- 		date
+-- )
+-- SELECT
+-- 	COALESCE(s.employee, a.employee) AS employee,
+-- 	COALESCE(s.date, a.date) AS date,
+-- 	GREATEST(COALESCE((s.staffing_percentage * 0.075) - (GREATEST(s.staffing_percentage + a.absence_percentage - 100, 0)) * 0.075, 0), 0) AS total_staffed_hours
+-- FROM
+-- 	staffing_totals s
+-- 	FULL OUTER JOIN absence_totals a ON s.employee = a.employee
+-- 	AND s.date = a.date
+-- ),
+-- staffing_by_category AS (
+--     SELECT
+--         s.employee,
+--         s.date,
+--         p.billable,
+--         SUM(s.percentage) AS category_percentage
+--     FROM staffing s
+--     JOIN projects p ON s.project = p.id
+--     WHERE NOT is_holiday(s.date)
+--     GROUP BY s.employee, s.date, p.billable
+-- ) ;
