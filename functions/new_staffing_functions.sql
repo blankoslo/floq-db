@@ -76,7 +76,7 @@ END
 $$ LANGUAGE plpgsql;
 
 
-CREATE OR REPLACE FUNCTION public.remove_staffing_period(
+CREATE OR REPLACE FUNCTION public.delete_staffing_period(
     in_employee integer,
     in_project text,
     in_date date
