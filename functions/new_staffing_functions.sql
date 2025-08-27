@@ -116,6 +116,7 @@ END
 $$ LANGUAGE plpgsql;
 
 
+-- obs! feil
 CREATE OR REPLACE FUNCTION public.available_dates_new(in_employee integer, start_date date, end_date date)
 RETURNS TABLE(available_date date) AS
 $$
