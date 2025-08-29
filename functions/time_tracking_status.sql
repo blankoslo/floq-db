@@ -147,7 +147,7 @@ begin
 end
 $function$;
 
-CREATE OR REPLACE FUNCTION public.staffed_unavailable_days_for_employees(start_date date, end_date date)
+CREATE OR REPLACE FUNCTION public.unavailable_absence_days_for_employees(start_date date, end_date date)
  RETURNS TABLE(id integer, days bigint)
  LANGUAGE plpgsql
  STABLE STRICT
@@ -165,7 +165,7 @@ end
 $function$;
 
 CREATE OR REPLACE FUNCTION public.time_tracking_status_with_staffing(start_date date, end_date date)
- RETURNS TABLE(name text, email text, available_hours double precision, staffed_billable_hours double precision, billable_hours double precision, staffed_nonbillable_hours double precision, non_billable_hours double precision, staffed_unavailable_hours double precision, unavailable_hours double precision, unregistered_days integer, last_date date, last_created date)
+ RETURNS TABLE(name text, email text, available_hours double precision, staffed_billable_hours double precision, billable_hours double precision, staffed_nonbillable_hours double precision, non_billable_hours double precision, unavailable_absence_hours double precision, unavailable_hours double precision, unregistered_days integer, last_date date, last_created date)
  LANGUAGE plpgsql
  STABLE STRICT
 AS $function$
@@ -178,7 +178,7 @@ begin
        coalesce(sum(t.billable_hours)/60.0, 0.0)::float8 as billable_hours,
        coalesce(sum(t.staffed_nonbillable_hours), 0.0)::float8 as staffed_nonbillable_hours,
        coalesce(sum(t.non_billable_hours)/60.0, 0.0)::float8 as non_billable_hours,
-       coalesce(sum(t.staffed_unavailable_days) * 7.5, 0.0)::float8 as staffed_unavailable_hours,
+       coalesce(sum(t.unavailable_absence_days) * 7.5, 0.0)::float8 as unavailable_absence_hours,
        coalesce(sum(t.unavailable_hours)/60.0, 0.0)::float8 as unavailable_hours,
        (select * from unregistered_days(start_date,end_date,e.id) u) as unregistered_days,
        ld.date,
@@ -191,7 +191,7 @@ begin
             nbh.sum as non_billable_hours,
             sbh.sum as staffed_billable_hours,
             snh.sum as staffed_nonbillable_hours,
-            sud.days as staffed_unavailable_days
+            sud.days as unavailable_absence_days
         from (
           select * from unavailable_hours_for_employees(start_date,end_date)
         ) uah
@@ -208,7 +208,7 @@ begin
           select * from staffed_nonbillable_hours_for_employees(start_date,end_date)
         ) snh on uah.id = snh.id
         full outer join (
-          select * from staffed_unavailable_days_for_employees(start_date,end_date)
+          select * from unavailable_absence_days_for_employees(start_date,end_date)
         ) sud on uah.id = sud.id
     ) as t on t.employee_id = e.id
 
@@ -308,7 +308,7 @@ RETURNS TABLE(
   billable_hours double precision,
   staffed_nonbillable_hours double precision,
   non_billable_hours double precision,
-  staffed_unavailable_hours double precision,
+  unavailable_absence_hours double precision,
   unavailable_hours double precision,
   unregistered_days integer,
   last_date date,
@@ -335,7 +335,7 @@ BEGIN
     coalesce(t.billable_hours / 60.0, 0.0)::double precision AS billable_hours,
     coalesce(t.staffed_nonbillable_hours, 0.0)::double precision AS staffed_nonbillable_hours,
     coalesce(t.non_billable_hours / 60.0, 0.0)::double precision AS non_billable_hours,
-    coalesce(t.staffed_unavailable_days * 7.5, 0.0)::double precision AS staffed_unavailable_hours,
+    coalesce(t.unavailable_absence_days * 7.5, 0.0)::double precision AS unavailable_absence_hours,
     coalesce(t.unavailable_hours / 60.0, 0.0)::double precision AS unavailable_hours,
     unregistered_days(w.week_start, w.week_end, e.id) AS unregistered_days,
     ld.date,
@@ -350,13 +350,13 @@ BEGIN
       coalesce(nbh.sum, 0.0)::double precision AS non_billable_hours,
       coalesce(sbh.sum, 0.0)::double precision AS staffed_billable_hours,
       coalesce(snh.sum, 0.0)::double precision AS staffed_nonbillable_hours,
-      coalesce(sud.days, 0.0)::double precision AS staffed_unavailable_days
+      coalesce(sud.days, 0.0)::double precision AS unavailable_absence_days
     FROM (SELECT * FROM unavailable_hours_for_employees(w.week_start, w.week_end)) uah
     FULL OUTER JOIN billable_hours_for_employees(w.week_start, w.week_end) bh ON uah.id = bh.id
     FULL OUTER JOIN nonbillable_hours_for_employees(w.week_start, w.week_end) nbh ON coalesce(uah.id, bh.id) = nbh.id
     FULL OUTER JOIN staffed_billable_hours_for_employees(w.week_start, w.week_end) sbh ON coalesce(uah.id, bh.id, nbh.id) = sbh.id
     FULL OUTER JOIN staffed_nonbillable_hours_for_employees(w.week_start, w.week_end) snh ON coalesce(uah.id, bh.id, nbh.id, sbh.id) = snh.id
-    FULL OUTER JOIN staffed_unavailable_days_for_employees(w.week_start, w.week_end) sud ON coalesce(uah.id, bh.id, nbh.id, sbh.id, snh.id) = sud.id
+    FULL OUTER JOIN unavailable_absence_days_for_employees(w.week_start, w.week_end) sud ON coalesce(uah.id, bh.id, nbh.id, sbh.id, snh.id) = sud.id
   ) t ON t.employee_id = e.id
   LEFT JOIN (
     SELECT DISTINCT ON (te.employee) te.employee, te.date
