@@ -120,7 +120,7 @@ CREATE OR REPLACE FUNCTION public.staffed_billable_hours_for_employees(start_dat
 AS $function$
 begin
   return query (
-    select s.employee, sum(s.percentage / 100.0) * 7.5
+    select s.employee, sum(s.percentage) * 7.5 / 100.0
     from staffing s, projects p
     where s.project = p.id
     and s.date between start_date and end_date
@@ -137,7 +137,7 @@ CREATE OR REPLACE FUNCTION public.staffed_nonbillable_hours_for_employees(start_
 AS $function$
 begin
   return query (
-    select s.employee, sum(s.percentage / 100.0) * 7.5
+    select s.employee, sum(s.percentage) * 7.5 / 100.0
     from staffing s, projects p
     where s.project = p.id
     and s.date between start_date and end_date
