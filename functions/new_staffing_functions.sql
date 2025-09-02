@@ -172,3 +172,82 @@ BEGIN
     );
 END
 $$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE FUNCTION public.get_staffing_periods(in_start_date date, in_end_date date)
+RETURNS jsonb
+STRICT
+AS $$
+BEGIN
+    RETURN (
+        WITH employee_periods AS (
+            SELECT
+                e.id,
+                e.first_name,
+                e.last_name,
+                e.role,
+                e.image_url,
+                sp.project,
+                sp.start_date,
+                sp.end_date,
+                sp.percentage
+            FROM employees e
+            JOIN staffing_periods sp ON e.id = sp.employee
+            WHERE
+                -- Employee is employed during the period
+                (e.date_of_employment IS NULL OR e.date_of_employment <= in_end_date)
+                AND (e.termination_date IS NULL OR e.termination_date >= in_start_date)
+                -- Staffing period overlaps with the requested period
+                AND sp.start_date <= in_end_date
+                AND sp.end_date >= in_start_date
+        ),
+        projects_with_periods AS (
+            SELECT
+                id,
+                first_name,
+                last_name,
+                role,
+                image_url,
+                project AS name,
+                jsonb_agg(
+                    jsonb_build_object(
+                        'startDate', start_date,
+                        'endDate', end_date,
+                        'percentage', percentage
+                    )
+                    ORDER BY start_date
+                ) AS periods
+            FROM employee_periods
+            GROUP BY id, first_name, last_name, role, image_url, project
+        ),
+        employees_with_projects AS (
+            SELECT
+                id,
+                first_name,
+                last_name,
+                role,
+                image_url,
+                jsonb_agg(
+                    jsonb_build_object(
+                        'name', name,
+                        'periods', periods
+                    )
+                    ORDER BY name
+                ) AS projects
+            FROM projects_with_periods
+            GROUP BY id, first_name, last_name, role, image_url
+        )
+        SELECT jsonb_agg(
+            jsonb_build_object(
+                'id', id,
+                'name', concat_ws(' ', first_name, last_name),
+                'role', role,
+                'imageUrl', image_url,
+                'projects', projects
+            )
+            ORDER BY first_name, last_name
+        )
+        FROM employees_with_projects
+    );
+END
+$$ LANGUAGE plpgsql;

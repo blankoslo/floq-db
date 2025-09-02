@@ -173,7 +173,7 @@ RETURNS TABLE(
     billable_hours double precision,
     staffed_nonbillable_hours double precision,
     non_billable_hours double precision,
-    staffed_unavailable_hours double precision,
+    unavailable_absence_hours double precision,
     unavailable_hours double precision,
     unregistered_days integer,
     last_date date,
