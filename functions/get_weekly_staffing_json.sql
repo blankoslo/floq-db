@@ -34,9 +34,10 @@ BEGIN
 				a.reason AS name,
 				a.date AS joined_date,
 				100 AS percentage,
-				NULL AS billable
+				p.billable AS billable
 			FROM
 				absence a
+			LEFT JOIN projects p ON a.reason = p.id
 			WHERE
 				a.date BETWEEN DATE_TRUNC('week',
 					start_date::date)
