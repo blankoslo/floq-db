@@ -4,7 +4,7 @@ CREATE OR REPLACE FUNCTION public.insert_staffing(
     in_project text,
     start_date date,
     end_date date,
-    percentage integer
+    percentage integer DEFAULT 100
 ) RETURNS SETOF date
 AS $$
 BEGIN
@@ -30,8 +30,8 @@ CREATE OR REPLACE FUNCTION public.update_staffing_period(
     in_project text,
     start_date date,
     end_date date,
-    new_percentage integer DEFAULT NULL
-) RETURNS SETOF staffing_periods
+    percentage integer DEFAULT 100
+) RETURNS SETOF date
 AS $$
 BEGIN
     DELETE FROM staffing
@@ -39,7 +39,7 @@ BEGIN
         AND project = in_project
         AND date BETWEEN start_date AND end_date;
 
-    PERFORM insert_staffing(in_employee, in_project, start_date, end_date, new_percentage);
+    RETURN QUERY SELECT * FROM insert_staffing(in_employee, in_project, start_date, end_date, percentage);
 END
 $$ LANGUAGE plpgsql;
 
@@ -47,14 +47,21 @@ CREATE OR REPLACE FUNCTION public.remove_staffing(
     in_employee integer,
     in_project text,
     start_date date,
-    end_date date
-) RETURNS SETOF staffing_periods
+    end_date date DEFAULT NULL
+) RETURNS SETOF date
 AS $$
 BEGIN
-    DELETE FROM staffing
-    WHERE employee = in_employee
-        AND project = in_project
-        AND date BETWEEN start_date AND end_date;
+    RETURN QUERY (
+        WITH deleted_rows AS (
+            DELETE FROM staffing
+            WHERE employee = in_employee
+                AND project = in_project
+                AND date >= start_date
+                AND (end_date IS NULL OR date <= end_date) -- end_date = null: delete everything since start_date
+            RETURNING date
+        )
+        SELECT date FROM deleted_rows ORDER BY date
+    );
 END
 $$ LANGUAGE plpgsql;
 
