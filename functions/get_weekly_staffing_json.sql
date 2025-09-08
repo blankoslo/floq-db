@@ -19,7 +19,8 @@ BEGIN
 				s.project AS name,
 				s.date AS joined_date,
 				s.percentage AS percentage,
-				p.billable AS billable
+				p.billable AS billable,
+				p.name AS project_name
 			FROM
 				staffing s
 				LEFT JOIN projects p ON s.project = p.id
@@ -34,7 +35,8 @@ BEGIN
 				a.reason AS name,
 				a.date AS joined_date,
 				100 AS percentage,
-				p.billable AS billable
+				p.billable AS billable,
+				p.name AS project_name
 			FROM
 				absence a
 			LEFT JOIN projects p ON a.reason = p.id
@@ -47,6 +49,7 @@ BEGIN
 				SELECT
 					id,
 					name,
+					project_name,
 					TO_CHAR(DATE_TRUNC('week',
 							joined_date),
 						'IYYY-IW') AS week,
@@ -60,6 +63,7 @@ BEGIN
 				GROUP BY
 					id,
 					name,
+					project_name,
 					DATE_TRUNC('week',
 						joined_date),
 					billable),
@@ -67,6 +71,7 @@ BEGIN
 					SELECT
 						id,
 						name,
+						project_name,
 						jsonb_object_agg(week,
 							days_in_week) AS week_data,
 						billable
@@ -75,6 +80,7 @@ BEGIN
 					GROUP BY
 						id,
 						name,
+						project_name,
 						billable
 )
 				SELECT
@@ -82,7 +88,9 @@ BEGIN
 					jsonb_agg(jsonb_build_object ('name',
 							name,
 							'billable',
-							billable) || week_data) AS subrows
+							billable,
+							'project_name',
+							project_name) || week_data) AS subrows
 				FROM
 					employee_projects
 				GROUP BY
