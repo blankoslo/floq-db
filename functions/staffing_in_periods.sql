@@ -7,7 +7,19 @@ CREATE OR REPLACE FUNCTION public.insert_staffing(
     percentage integer DEFAULT 100
 ) RETURNS SETOF date
 AS $$
+DECLARE
+    is_absence BOOLEAN;
 BEGIN
+    SELECT EXISTS (
+        SELECT 1
+        FROM absence_reasons
+        WHERE id = in_project
+    ) INTO is_absence;
+
+    IF is_absence THEN
+        RAISE EXCEPTION 'Cannot insert absence into the staffing table: "%"', in_project;
+    END IF;
+
     RETURN QUERY (
         WITH new_staffing AS (
             INSERT INTO staffing
@@ -25,7 +37,7 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION public.update_staffing_period(
+CREATE OR REPLACE FUNCTION public.upsert_staffing(
     in_employee integer,
     in_project text,
     start_date date,
