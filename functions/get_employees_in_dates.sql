@@ -14,9 +14,9 @@ BEGIN
 		FROM
 			employees
 		WHERE
-			employees.date_of_employment <= end_date
+			employees.date_of_employment <= start_date
 			AND(employees.termination_date IS NULL
-				OR employees.termination_date >= start_date)
+				OR employees.termination_date >= end_date)
 		ORDER BY
 			employees.first_name);
 END
