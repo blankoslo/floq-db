@@ -97,3 +97,53 @@ BEGIN
     );
 END
 $$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION public.availability_percentage(in_employee integer, start_date date, end_date date)
+RETURNS DECIMAL(5,2) AS
+$$
+DECLARE
+    total_working_days INTEGER;
+    total_possible_percentage INTEGER;
+    unavailable_percentage INTEGER;
+    staffed_percentage INTEGER;
+    available_percentage INTEGER;
+    result_percentage DECIMAL(5,2);
+BEGIN
+    SELECT COUNT(*)
+    INTO total_working_days
+    FROM generate_series(start_date, end_date, '1 day'::interval) d
+    WHERE is_weekday(d::date)
+        AND NOT is_holiday(d::date);
+
+    -- Start with 100% per workable day
+    total_possible_percentage := total_working_days * 100;
+
+    -- Calculate unavailable percentage (absence marked as unavailable)
+    SELECT COALESCE(SUM(100), 0)
+    INTO unavailable_percentage
+    FROM absence a
+    JOIN absence_reasons ar ON a.reason = ar.id
+    WHERE a.employee_id = in_employee
+        AND a.date BETWEEN start_date AND end_date
+        AND ar.billable = 'unavailable';
+
+    -- Calculate staffed percentage
+    SELECT COALESCE(SUM(s.percentage), 0)
+    INTO staffed_percentage
+    FROM available_dates_new(in_employee, start_date, end_date) ad
+    LEFT JOIN staffing s ON s.employee = in_employee
+        AND s.date = ad.available_date
+        AND s.date BETWEEN start_date AND end_date;
+
+    -- Calculate available percentage: total possible - unavailable - staffed
+    available_percentage := total_possible_percentage - unavailable_percentage - staffed_percentage;
+
+    -- Calculate final percentage
+    IF total_possible_percentage = 0 THEN
+        RETURN 0.00;
+    ELSE
+        result_percentage := (available_percentage::DECIMAL / total_possible_percentage::DECIMAL) * 100;
+        RETURN GREATEST(0.00, result_percentage);
+    END IF;
+END
+$$ LANGUAGE plpgsql;
