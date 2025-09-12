@@ -91,9 +91,12 @@ BEGIN
     EXCEPT (
         SELECT a.date AS date
         FROM absence a
+        LEFT JOIN absence_reasons ar
+        ON a.reason = ar.id
         WHERE a.employee_id = in_employee
             AND a.date >= start_date
             AND a.date <= end_date
+            AND ar.billable = 'unavailable'
     );
 END
 $$ LANGUAGE plpgsql;
