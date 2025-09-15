@@ -58,8 +58,7 @@ BEGIN
         ),
         working_day_count AS (
             SELECT COUNT(*) AS count
-            FROM generate_series(cur_week_start, (cur_week_start + INTERVAL '6 days')::date, '1 day'::interval) d
-            WHERE is_weekday(d::date) AND NOT is_holiday(d::date)
+            FROM available_dates_new(cur_week_start, (cur_week_start + INTERVAL '6 days')::date)
         ),
         potential_hours AS (
             SELECT ec.count * wdc.count * 7.5 AS hours

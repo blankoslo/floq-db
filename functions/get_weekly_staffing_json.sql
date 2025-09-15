@@ -76,7 +76,7 @@ BEGIN
 						ed.week,
 						jsonb_build_object(
 						    'dates', ed.days_in_week,
-							'availability', availability_percentage(ed.id, ed.week_start, (ed.week_start + INTERVAL '6 days')::date)
+							'availability', availability_percentage(ed.week_start, (ed.week_start + INTERVAL '6 days')::date, ed.id)
 						) AS week_data,
 						ed.billable
 					FROM
