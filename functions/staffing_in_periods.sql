@@ -28,7 +28,7 @@ BEGIN
                 in_project AS project,
                 available_date AS date,
                 percentage AS percentage
-            FROM available_dates_new(in_employee, start_date, end_date)
+            FROM available_dates_new(start_date, end_date)
             ON CONFLICT (employee, project, date) DO NOTHING
             RETURNING date
         )
