@@ -1,4 +1,5 @@
 -- Deploy floq:add_employee_tenure_role_table to pg
+-- requires: employees_table
 
 BEGIN;
 
