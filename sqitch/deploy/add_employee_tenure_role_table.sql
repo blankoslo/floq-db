@@ -5,10 +5,11 @@ BEGIN;
 
 CREATE TABLE employee_tenure_role (
     id          TEXT CONSTRAINT employee_tenure_role_pkey PRIMARY KEY DEFAULT uuid_generate_v4(),
-    year        INTEGER NOT NULL,
+    from_date   DATE NOT NULL,
+    to_date     DATE,
     employee_id INTEGER REFERENCES employees(id) NOT NULL,
     tenure_role TEXT NOT NULL,
-    created     DATE DEFAULT now()
+    created     TIMESTAMP DEFAULT now()
 );
 
 COMMIT;
