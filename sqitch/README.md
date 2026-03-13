@@ -3,7 +3,7 @@
 ## Prerequisites
 
 You need either:
-- [Sqitch](http://sqitch.org) installed locally (e.g. `brew install sqitch`), or
+- [Sqitch](https://sqitch.org/download/) installed locally (e.g. `brew install sqitch`), or
 - Docker, and use the `./sqitch` wrapper script in this directory which runs Sqitch in a container
 
 ## Running Sqitch
