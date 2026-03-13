@@ -12,4 +12,6 @@ CREATE TABLE employee_tenure_role (
     created     TIMESTAMP DEFAULT now()
 );
 
+GRANT ALL PRIVILEGES ON employee_tenure_role TO employee;
+
 COMMIT;
