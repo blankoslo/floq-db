@@ -29,6 +29,7 @@ SQITCH_PASSWORD=password ./sqitch status --target floq-local-docker
 ```
 
 Available targets are defined in `sqitch.conf`: `floq-local-docker`, `floq-dev`, `floq-test`, `floq-prod`.
+For non-local targets, the `SQITCH_PASSWORD` is the `root` database password, which can be found in 1Password.
 
 #### Author config
 
