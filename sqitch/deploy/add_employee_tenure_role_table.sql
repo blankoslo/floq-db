@@ -1,5 +1,6 @@
 -- Deploy floq:add_employee_tenure_role_table to pg
 -- requires: employees_table
+-- requires: enable_employee_row_level_security
 
 BEGIN;
 
@@ -12,6 +13,8 @@ CREATE TABLE employee_tenure_role (
     created     TIMESTAMP DEFAULT now()
 );
 
-GRANT ALL PRIVILEGES ON employee_tenure_role TO employee;
+GRANT SELECT ON TABLE employee_tenure_role TO employee;
+
+SELECT enable_default_row_level_security('employee_tenure_role', 'check_admin_write_access()');
 
 COMMIT;
