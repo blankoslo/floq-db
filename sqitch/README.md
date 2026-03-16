@@ -2,26 +2,77 @@
 
 ## Prerequisites
 
-You need to install [Sqitch](http://sqitch.org), or use the `sqitch.sh` which
-runs Sqitch in a Docker container.
+You need either:
+- [Sqitch](https://sqitch.org/download/) installed locally (e.g. `brew install sqitch`), or
+- Docker, and use the `./sqitch` wrapper script in this directory which runs Sqitch in a container
 
-## Initialization
+## Running Sqitch
 
-Edit `sqitch.conf` if you want to change the database target(s) and set the DB
-password using SQITCH_PASSWORD, then run:
+### Via Docker (recommended)
 
+All commands use the `./sqitch` wrapper script from inside this `sqitch/` directory.
+The script runs the official `sqitch/sqitch` Docker image and mounts the current directory into the container.
+
+**Deploy all pending changes:**
+```sh
+SQITCH_PASSWORD=password ./sqitch deploy --target floq-local-docker
 ```
-sqitch deploy --verify --target <TARGET>
+
+**Revert the last change:**
+```sh
+SQITCH_PASSWORD=password ./sqitch revert --to '@HEAD^' --target floq-local-docker
 ```
 
-## Hacking
+**Check deployment status:**
+```sh
+SQITCH_PASSWORD=password ./sqitch status --target floq-local-docker
+```
 
-To add a new migration to the database schema:
+Available targets are defined in `sqitch.conf`: `floq-local-docker`, `floq-dev`, `floq-test`, `floq-prod`.
+For non-local targets, the `SQITCH_PASSWORD` is the `root` database password, which can be found in 1Password.
 
-- `sqitch add add_foo_table -n 'Add a new foo table'`
-- `$EDITOR {deploy,revert,verify}/add_foo_table.sql`
-- `sqitch deploy --verify --target floq-dev`
+#### Author config
 
-To revert the last change:
+Since the script runs as `root` inside the container, your name will show as `root` in `sqitch.plan` unless you configure it. Create a `.sqitch/sqitch.conf` file in this directory:
 
-- `sqitch revert --to '@HEAD^' --target floq-dev`
+```sh
+mkdir -p .sqitch
+cat > .sqitch/sqitch.conf << EOF
+[user]
+    name = Your Name
+    email = your.email@blank.no
+EOF
+```
+
+### Locally (native install)
+
+If you have Sqitch installed locally, use `sqitch` directly instead of `./sqitch`.
+Use the `floq-local` target which points to `localhost`:
+
+```sh
+SQITCH_PASSWORD=password sqitch deploy --target floq-local
+```
+
+## Adding a new migration
+
+From inside the `sqitch/` directory:
+
+1. Register the change (creates the three SQL files and updates `sqitch.plan`):
+```sh
+./sqitch add add_foo_table -n 'Add foo table'
+```
+
+2. Edit the generated files:
+   - `deploy/add_foo_table.sql` — the change (e.g. `CREATE TABLE`)
+   - `revert/add_foo_table.sql` — how to undo it (e.g. `DROP TABLE`)
+   - `verify/add_foo_table.sql` — a check that it was applied (e.g. `SELECT * FROM foo`)
+
+3. If your change depends on another, add it in `sqitch.plan`:
+```
+add_foo_table [employees_table] 2026-... # Add foo table
+```
+
+4. Deploy:
+```sh
+SQITCH_PASSWORD=password ./sqitch deploy --target floq-local-docker
+```
