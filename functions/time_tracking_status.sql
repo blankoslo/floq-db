@@ -344,6 +344,16 @@ BEGIN
 END;
 $function$;
 
+CREATE OR REPLACE FUNCTION public.employee_has_sick_child_days(emp_id integer)
+RETURNS boolean
+LANGUAGE sql
+STABLE STRICT
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM time_entry WHERE employee = emp_id AND project = 'SYK1002' LIMIT 1
+  );
+$function$;
+
 CREATE OR REPLACE FUNCTION public.employee_weekly_fg(year integer, emp_id integer)
 RETURNS TABLE(week_number integer, week_start date, available_hours double precision, billable_hours double precision)
 LANGUAGE plpgsql
