@@ -96,3 +96,4 @@ alter_table_absence_add_percentage 2024-11-28T12:03:26Z Petter Juterud Barhaugen
 remove_absence_from_staffing 2025-01-23T14:00:30Z Simen Viken Grini <simen.grini@blank.no> # move all absence from the staffing table to the absence table
 add_view_available_projects 2025-09-08T07:59:11Z Petter Juterud Barhaugen <petter@Petter-sin-MacBook-Pro> # Add new available_projects view which omits absence reasons
 add_employee_tenure_role_table [employees_table enable_employee_row_level_security] 2026-03-12T11:55:23Z Sander Magnussen Neraas <sander.neraas@blank.no> # Add employee_tenure_role table
+compact_time_entries [alter_time_entry_use_btree_index_and_add_employee_date_composite_index] 2026-03-26T00:00:00Z Sander Magnussen Neraas <sander.neraas@blank.no> # Compact event-sourced time_entry rows to one per (employee, date, project)
