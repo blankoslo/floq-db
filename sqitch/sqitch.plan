@@ -97,3 +97,4 @@ remove_absence_from_staffing 2025-01-23T14:00:30Z Simen Viken Grini <simen.grini
 add_view_available_projects 2025-09-08T07:59:11Z Petter Juterud Barhaugen <petter@Petter-sin-MacBook-Pro> # Add new available_projects view which omits absence reasons
 add_employee_tenure_role_table [employees_table enable_employee_row_level_security] 2026-03-12T11:55:23Z Sander Magnussen Neraas <sander.neraas@blank.no> # Add employee_tenure_role table
 add_time_entry_comments_table [time_tracking_tables enable_employee_row_level_security] 2026-04-10T10:43:02Z Sander Magnussen Neraas <sander.neraas@blank.no> # Add time_entry_comments table for per-employee/project/date comments
+add_tripletex_customer_number_to_customer_table 2026-04-23T10:57:14Z Sander Magnussen Neraas <sander.neraas@blank.no> # Add tripletex customer number to customer table
