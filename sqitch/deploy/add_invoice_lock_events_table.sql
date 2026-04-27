@@ -13,4 +13,6 @@ CREATE TABLE invoice_lock_events (
     commit_date DATE NOT NULL
 );
 
+GRANT ALL PRIVILEGES ON TABLE invoice_lock_events TO employee;
+
 COMMIT;
