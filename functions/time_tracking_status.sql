@@ -299,6 +299,7 @@ END;
 $function$;
 
 DROP FUNCTION IF EXISTS public.employee_yearly_bonus(integer, integer);
+DROP FUNCTION IF EXISTS public.fg_bonus(date, date, integer);
 
 CREATE OR REPLACE FUNCTION public.employee_has_sick_child_days(emp_id integer)
 RETURNS boolean
