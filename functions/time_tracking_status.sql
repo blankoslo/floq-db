@@ -297,6 +297,8 @@ BEGIN
 END;
 $function$;
 
+DROP FUNCTION IF EXISTS public.employee_yearly_bonus(integer, integer);
+
 CREATE OR REPLACE FUNCTION public.employee_has_sick_child_days(emp_id integer)
 RETURNS boolean
 LANGUAGE sql
