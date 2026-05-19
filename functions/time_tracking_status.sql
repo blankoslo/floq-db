@@ -297,53 +297,6 @@ BEGIN
 END;
 $function$;
 
-CREATE OR REPLACE FUNCTION public.employee_yearly_bonus(year integer, emp_id integer)
-RETURNS integer
-LANGUAGE plpgsql
-AS $function$
-DECLARE
-  weeks_in_year integer;
-  result integer;
-BEGIN
-  SELECT EXTRACT(WEEK FROM MAKE_DATE(year, 12, 28))::integer INTO weeks_in_year;
-
-  SELECT COALESCE(SUM(
-    CASE
-      WHEN hours.available_hours <= 0 THEN 0
-      WHEN EXISTS (
-        SELECT 1 FROM employee_tenure_role etr
-        WHERE etr.employee_id = emp_id
-          AND etr.from_date <= weeks.week_start + 6
-          AND (etr.to_date IS NULL OR etr.to_date >= weeks.week_start)
-      ) THEN
-        CASE
-          WHEN hours.bonus_billable_hours / hours.available_hours > 0.95 THEN 1000
-          WHEN hours.bonus_billable_hours / hours.available_hours > 0.90 THEN 750
-          ELSE 0
-        END
-      ELSE
-        CASE
-          WHEN hours.bonus_billable_hours / hours.available_hours > 0.95 THEN 750
-          WHEN hours.bonus_billable_hours / hours.available_hours > 0.90 THEN 500
-          ELSE 0
-        END
-    END
-  ), 0)::integer INTO result
-  FROM (
-    SELECT
-      w AS week_number,
-      to_date(concat(year, lpad(w::text, 2, '0')), 'iyyyiw') AS week_start
-    FROM generate_series(1, weeks_in_year) AS w
-  ) AS weeks
-  JOIN LATERAL (
-    SELECT h.available_hours, h.bonus_billable_hours
-    FROM public.bonus_hours_for_employee(emp_id, weeks.week_start, weeks.week_start + 6) AS h
-  ) AS hours ON true;
-
-  RETURN result;
-END;
-$function$;
-
 CREATE OR REPLACE FUNCTION public.employee_has_sick_child_days(emp_id integer)
 RETURNS boolean
 LANGUAGE sql
