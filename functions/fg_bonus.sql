@@ -1,5 +1,7 @@
-CREATE OR REPLACE FUNCTION public.weekly_fg_bonus(from_date date, to_date date, emp_id integer DEFAULT NULL)
-RETURNS TABLE(employee_id integer, week_start date, available_hours double precision, billable_hours double precision, bonus integer)
+DROP FUNCTION IF EXISTS public.weekly_fg_bonus(date, date, integer);
+
+CREATE OR REPLACE FUNCTION public.fg_bonus(from_date date, to_date date, emp_id integer DEFAULT NULL)
+RETURNS TABLE(employee_id integer, week_start date, bonus_available_hours double precision, billable_hours double precision, fg_rate double precision, bonus integer)
 LANGUAGE plpgsql
 AS $function$
 BEGIN
@@ -7,8 +9,12 @@ BEGIN
   SELECT
     e.id AS employee_id,
     weeks.week_start,
-    hours.available_hours,
+    hours.available_hours AS bonus_available_hours,
     hours.bonus_billable_hours AS billable_hours,
+    CASE WHEN hours.available_hours > 0
+         THEN hours.bonus_billable_hours / hours.available_hours
+         ELSE 0.0
+    END AS fg_rate,
     CASE
       WHEN hours.available_hours <= 0 THEN 0
       WHEN EXISTS (

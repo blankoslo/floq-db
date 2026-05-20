@@ -1,5 +1,5 @@
 CREATE OR REPLACE FUNCTION public.weekly_fg(from_date date, to_date date, emp_id integer DEFAULT NULL)
-RETURNS TABLE(employee_id integer, week_start date, available_hours double precision, billable_hours double precision)
+RETURNS TABLE(employee_id integer, week_start date, available_hours double precision, billable_hours double precision, fg_rate double precision)
 LANGUAGE plpgsql
 AS $function$
 BEGIN
@@ -8,7 +8,11 @@ BEGIN
     e.id AS employee_id,
     weeks.week_start,
     hours.available_hours,
-    hours.billable_hours
+    hours.billable_hours,
+    CASE WHEN hours.available_hours > 0
+         THEN hours.billable_hours / hours.available_hours
+         ELSE 0.0
+    END AS fg_rate
   FROM employees e
   CROSS JOIN (
     SELECT (date_trunc('week', from_date::timestamptz)::date + (n * 7))::date AS week_start
