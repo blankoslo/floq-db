@@ -1,5 +1,3 @@
-DROP FUNCTION IF EXISTS public.weekly_fg(date, date, integer);
-
 CREATE OR REPLACE FUNCTION public.fg_weekly(from_date date, to_date date, emp_id integer DEFAULT NULL)
 RETURNS TABLE(employee_id integer, week_start date, available_hours double precision, billable_hours double precision, fg_rate double precision)
 LANGUAGE plpgsql

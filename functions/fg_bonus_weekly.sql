@@ -1,4 +1,3 @@
-DROP FUNCTION IF EXISTS public.weekly_fg_bonus(date, date, integer);
 DROP FUNCTION IF EXISTS public.fg_bonus(date, date, integer);
 
 CREATE OR REPLACE FUNCTION public.fg_bonus_weekly(from_date date, to_date date, emp_id integer DEFAULT NULL)
