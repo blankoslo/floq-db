@@ -87,7 +87,7 @@ BEGIN
       WHEN EXISTS (
         SELECT 1 FROM employee_tenure_role etr
         WHERE etr.employee_id = e.id
-          AND etr.tenure_role = 'fagansvarlig'
+          AND etr.tenure_role = 'Fagleder'
           AND etr.from_date <= weeks.week_start + 6
           AND (etr.to_date IS NULL OR etr.to_date >= weeks.week_start)
       ) THEN
@@ -123,7 +123,7 @@ END;
 $function$;
 
 CREATE OR REPLACE FUNCTION public.fg_bonus_employee_monthly(from_date date, to_date date, emp_id integer DEFAULT NULL)
-RETURNS TABLE(employee_id integer, month_start date, bonus_available_hours double precision, billable_hours double precision, fg_bonus_rate double precision, bonus integer)
+RETURNS TABLE(employee_id integer, month_start date, month_end date, bonus_available_hours double precision, billable_hours double precision, fg_bonus_rate double precision, bonus integer)
 LANGUAGE plpgsql
 AS $function$
 BEGIN
@@ -131,12 +131,13 @@ BEGIN
   WITH weekly_data AS (
     SELECT
       e.id AS emp_id,
-      -- Assign each week to the month containing the majority (>=4) of its days
+      -- Calendar month used only for grouping (majority rule: month with >=4 of the 7 days)
       CASE
         WHEN LEAST(7, (date_trunc('month', weeks.week_start::timestamptz) + interval '1 month')::date - weeks.week_start) >= 4
         THEN date_trunc('month', weeks.week_start::timestamptz)::date
         ELSE date_trunc('month', (weeks.week_start + 6)::timestamptz)::date
-      END AS month_start,
+      END AS assigned_month,
+      weeks.week_start,
       hours.available_hours,
       hours.bonus_billable_hours,
       CASE
@@ -144,7 +145,7 @@ BEGIN
         WHEN EXISTS (
           SELECT 1 FROM employee_tenure_role etr
           WHERE etr.employee_id = e.id
-            AND etr.tenure_role = 'fagansvarlig'
+            AND etr.tenure_role = 'Fagleder'
             AND etr.from_date <= weeks.week_start + 6
             AND (etr.to_date IS NULL OR etr.to_date >= weeks.week_start)
         ) THEN
@@ -179,7 +180,8 @@ BEGIN
   )
   SELECT
     wd.emp_id AS employee_id,
-    wd.month_start,
+    min(wd.week_start) AS month_start,
+    max(wd.week_start + 6) AS month_end,
     sum(wd.available_hours)::double precision AS bonus_available_hours,
     sum(wd.bonus_billable_hours)::double precision AS billable_hours,
     CASE WHEN sum(wd.available_hours) > 0
@@ -188,7 +190,7 @@ BEGIN
     END AS fg_bonus_rate,
     sum(wd.week_bonus)::integer AS bonus
   FROM weekly_data wd
-  GROUP BY wd.emp_id, wd.month_start
-  ORDER BY wd.emp_id, wd.month_start;
+  GROUP BY wd.emp_id, wd.assigned_month
+  ORDER BY wd.emp_id, wd.assigned_month;
 END;
 $function$;
