@@ -64,7 +64,7 @@ END;
 $function$;
 
 CREATE OR REPLACE FUNCTION public.fg_bonus_employee_weekly(from_date date, to_date date, emp_id integer DEFAULT NULL)
-RETURNS TABLE(employee_id integer, week_start date, bonus_available_hours double precision, billable_hours double precision, fg_rate double precision, bonus integer)
+RETURNS TABLE(employee_id integer, week_start date, bonus_available_hours double precision, billable_hours double precision, fg_bonus_rate double precision, bonus integer)
 LANGUAGE plpgsql
 AS $function$
 BEGIN
@@ -77,7 +77,7 @@ BEGIN
     CASE WHEN hours.available_hours > 0
          THEN hours.bonus_billable_hours / hours.available_hours
          ELSE 0.0
-    END AS fg_rate,
+    END AS fg_bonus_rate,
     CASE
       WHEN hours.available_hours <= 0 THEN 0
       WHEN EXISTS (
@@ -119,7 +119,7 @@ END;
 $function$;
 
 CREATE OR REPLACE FUNCTION public.fg_bonus_employee_monthly(from_date date, to_date date, emp_id integer DEFAULT NULL)
-RETURNS TABLE(employee_id integer, month_start date, bonus_available_hours double precision, billable_hours double precision, fg_rate double precision, bonus integer)
+RETURNS TABLE(employee_id integer, month_start date, bonus_available_hours double precision, billable_hours double precision, fg_bonus_rate double precision, bonus integer)
 LANGUAGE plpgsql
 AS $function$
 BEGIN
@@ -181,7 +181,7 @@ BEGIN
     CASE WHEN sum(wd.available_hours) > 0
          THEN sum(wd.bonus_billable_hours) / sum(wd.available_hours)
          ELSE 0.0
-    END AS fg_rate,
+    END AS fg_bonus_rate,
     sum(wd.week_bonus)::integer AS bonus
   FROM weekly_data wd
   GROUP BY wd.emp_id, wd.month_start
