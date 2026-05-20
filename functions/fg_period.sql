@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION public.fg(from_date date, to_date date, emp_id integer DEFAULT NULL)
+CREATE OR REPLACE FUNCTION public.fg_period(from_date date, to_date date, emp_id integer DEFAULT NULL)
 RETURNS TABLE(employee_id integer, available_hours double precision, billable_hours double precision, fg_rate double precision)
 LANGUAGE plpgsql
 AS $function$
