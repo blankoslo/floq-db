@@ -3,6 +3,8 @@ DROP FUNCTION IF EXISTS public.fg_weekly(date, date, integer);
 DROP FUNCTION IF EXISTS public.fg_bonus(date, date, integer);
 DROP FUNCTION IF EXISTS public.fg_bonus_weekly(date, date, integer);
 DROP FUNCTION IF EXISTS public.fg_bonus_monthly(date, date, integer);
+DROP FUNCTION IF EXISTS public.fg_employee_period(date, date, integer);
+DROP FUNCTION IF EXISTS public.fg_employee_weekly(date, date, integer);
 DROP FUNCTION IF EXISTS public.fg_bonus_employee_weekly(date, date, integer);
 DROP FUNCTION IF EXISTS public.fg_bonus_employee_monthly(date, date, integer);
 
