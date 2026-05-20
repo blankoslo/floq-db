@@ -1,6 +1,7 @@
 DROP FUNCTION IF EXISTS public.weekly_fg_bonus(date, date, integer);
+DROP FUNCTION IF EXISTS public.fg_bonus(date, date, integer);
 
-CREATE OR REPLACE FUNCTION public.fg_bonus(from_date date, to_date date, emp_id integer DEFAULT NULL)
+CREATE OR REPLACE FUNCTION public.fg_bonus_weekly(from_date date, to_date date, emp_id integer DEFAULT NULL)
 RETURNS TABLE(employee_id integer, week_start date, bonus_available_hours double precision, billable_hours double precision, fg_rate double precision, bonus integer)
 LANGUAGE plpgsql
 AS $function$
