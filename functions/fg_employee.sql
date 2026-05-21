@@ -7,6 +7,8 @@ DROP FUNCTION IF EXISTS public.fg_employee_period(date, date, integer);
 DROP FUNCTION IF EXISTS public.fg_employee_weekly(date, date, integer);
 DROP FUNCTION IF EXISTS public.fg_bonus_employee_weekly(date, date, integer);
 DROP FUNCTION IF EXISTS public.fg_bonus_employee_monthly(date, date, integer);
+DROP FUNCTION IF EXISTS public.fg_bonus_employee_monthly(integer, integer, integer);
+DROP FUNCTION IF EXISTS public.fg_bonus_employee_monthly_range(integer, integer, integer, integer, integer);
 
 CREATE OR REPLACE FUNCTION public.fg_employee_period(from_date date, to_date date, emp_id integer DEFAULT NULL)
 RETURNS TABLE(employee_id integer, available_hours double precision, billable_hours double precision, fg_rate double precision)
@@ -122,10 +124,17 @@ BEGIN
 END;
 $function$;
 
-CREATE OR REPLACE FUNCTION public.fg_bonus_employee_monthly(from_date date, to_date date, emp_id integer DEFAULT NULL)
+CREATE OR REPLACE FUNCTION public.fg_bonus_employee_monthly_range(
+  start_year integer, start_month integer,
+  end_year integer, end_month integer,
+  emp_id integer DEFAULT NULL
+)
 RETURNS TABLE(employee_id integer, month_start date, month_end date, bonus_available_hours double precision, billable_hours double precision, fg_bonus_rate double precision, bonus integer)
 LANGUAGE plpgsql
 AS $function$
+DECLARE
+  from_date date := make_date(start_year, start_month, 1);
+  to_date   date := (make_date(end_year, end_month, 1) + interval '1 month')::date - 1;
 BEGIN
   RETURN QUERY
   WITH weekly_data AS (
@@ -190,7 +199,16 @@ BEGIN
     END AS fg_bonus_rate,
     sum(wd.week_bonus)::integer AS bonus
   FROM weekly_data wd
+  WHERE wd.assigned_month >= make_date(start_year, start_month, 1)
+    AND wd.assigned_month <= make_date(end_year, end_month, 1)
   GROUP BY wd.emp_id, wd.assigned_month
   ORDER BY wd.emp_id, wd.assigned_month;
 END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.fg_bonus_employee_monthly(year integer, month integer, emp_id integer DEFAULT NULL)
+RETURNS TABLE(employee_id integer, month_start date, month_end date, bonus_available_hours double precision, billable_hours double precision, fg_bonus_rate double precision, bonus integer)
+LANGUAGE sql
+AS $function$
+  SELECT * FROM public.fg_bonus_employee_monthly_range(year, month, year, month, emp_id);
 $function$;
