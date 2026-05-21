@@ -278,8 +278,9 @@ BEGIN
   RETURN QUERY (
     SELECT
       business_hours(greatest(e.date_of_employment, start_date), least(e.termination_date, end_date))
-        - coalesce(uah.sum / 60.0, 0.0)::float8 AS available_hours,
-      coalesce(bh.sum / 60.0, 0.0)::float8 + coalesce(bonus_nb.sum / 60.0, 0.0)::float8 AS bonus_billable_hours
+        - coalesce(uah.sum / 60.0, 0.0)::float8
+        - coalesce(bonus_nb.sum / 60.0, 0.0)::float8 AS available_hours,
+      coalesce(bh.sum / 60.0, 0.0)::float8 AS bonus_billable_hours
     FROM employees e
     LEFT JOIN (SELECT * FROM unavailable_hours_for_employees(start_date, end_date)) uah ON uah.id = e.id
     LEFT JOIN (SELECT * FROM billable_hours_for_employees(start_date, end_date)) bh ON bh.id = e.id
