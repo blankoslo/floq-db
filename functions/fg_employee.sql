@@ -10,6 +10,70 @@ DROP FUNCTION IF EXISTS public.fg_bonus_employee_monthly(date, date, integer);
 DROP FUNCTION IF EXISTS public.fg_bonus_employee_monthly(integer, integer, integer);
 DROP FUNCTION IF EXISTS public.fg_bonus_employee_monthly_range(integer, integer, integer, integer, integer);
 
+CREATE OR REPLACE FUNCTION public.fg_for_employee(emp_id integer, start_date date, end_date date)
+ RETURNS TABLE(available_hours double precision, billable_hours double precision)
+ LANGUAGE plpgsql
+ STABLE STRICT
+AS $function$
+begin
+  return query (
+    select
+    business_hours(greatest(e.date_of_employment, start_date), least(e.termination_date, end_date)) - coalesce(sum(employee.unavailable_hours)/60.0, 0.0)::float8 as available_hours,
+	  coalesce(sum(employee.billable_hours)/60.0, 0.0)::float8 as billable_hours
+	from employees e
+  left join (
+
+	   select coalesce(uah.id, bh.id, nbh.id) as employee_id,
+	   		uah.sum as unavailable_hours,
+	        bh.sum as billable_hours,
+	        nbh.sum as non_billable_hours
+	    from (
+        select * from unavailable_hours_for_employees(start_date,end_date)
+	    ) uah
+      full outer join (
+	    	select * from billable_hours_for_employees(start_date,end_date)
+	    ) bh on uah.id = bh.id
+      full outer join (
+        select * from billable_hours_for_employees(start_date,end_date)
+	    ) nbh on uah.id = nbh.id
+
+	) as employee on employee.employee_id = e.id
+
+	where e.id = emp_id
+	group by e.id
+  );
+end
+$function$;
+
+CREATE OR REPLACE FUNCTION public.bonus_hours_for_employee(emp_id integer, start_date date, end_date date)
+ RETURNS TABLE(available_hours double precision, bonus_billable_hours double precision)
+ LANGUAGE plpgsql
+ STABLE STRICT
+AS $function$
+BEGIN
+  RETURN QUERY (
+    SELECT
+      business_hours(greatest(e.date_of_employment, start_date), least(e.termination_date, end_date))
+        - coalesce(uah.sum / 60.0, 0.0)::float8
+        - coalesce(bonus_nb.sum / 60.0, 0.0)::float8 AS available_hours,
+      coalesce(bh.sum / 60.0, 0.0)::float8 AS bonus_billable_hours
+    FROM employees e
+    LEFT JOIN (SELECT * FROM unavailable_hours_for_employees(start_date, end_date)) uah ON uah.id = e.id
+    LEFT JOIN (SELECT * FROM billable_hours_for_employees(start_date, end_date)) bh ON bh.id = e.id
+    LEFT JOIN (
+      SELECT t.employee, sum(t.minutes)::bigint AS sum
+      FROM time_entry t
+      JOIN projects p ON t.project = p.id
+      WHERE t.date BETWEEN start_date AND end_date
+        AND p.id IN ('PER1005', 'REK1010')
+      GROUP BY t.employee
+    ) bonus_nb ON bonus_nb.employee = e.id
+    WHERE e.id = emp_id
+    GROUP BY e.id, e.date_of_employment, e.termination_date, uah.sum, bh.sum, bonus_nb.sum
+  );
+END;
+$function$;
+
 CREATE OR REPLACE FUNCTION public.fg_employee_period(from_date date, to_date date, emp_id integer DEFAULT NULL)
 RETURNS TABLE(employee_id integer, available_hours double precision, billable_hours double precision, fg_rate double precision)
 LANGUAGE plpgsql
