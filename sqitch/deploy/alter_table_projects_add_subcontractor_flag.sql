@@ -3,6 +3,8 @@
 
 BEGIN;
 
-ALTER TABLE projects ADD COLUMN has_subcontractor_consultants boolean NOT NULL DEFAULT false;
+ALTER TABLE projects
+  ADD COLUMN has_subcontractor_consultants boolean NOT NULL DEFAULT false,
+  ADD COLUMN is_subcontractor              boolean NOT NULL DEFAULT false;
 
 COMMIT;

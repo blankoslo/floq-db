@@ -2,6 +2,6 @@
 
 BEGIN;
 
-SELECT id, consultant_id, project_id, hourly_rate, from_date, to_date FROM project_members;
+SELECT id, employee_id, project_id, hourly_rate, from_date, to_date FROM project_members;
 
 ROLLBACK;

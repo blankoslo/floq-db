@@ -6,7 +6,7 @@ BEGIN;
 
 CREATE TABLE project_members (
   id            SERIAL PRIMARY KEY,
-  consultant_id integer NOT NULL REFERENCES employees(id),
+  employee_id   integer NOT NULL REFERENCES employees(id),
   project_id    text    NOT NULL REFERENCES projects(id),
   hourly_rate   numeric NOT NULL,
   from_date     date    NOT NULL,

@@ -3,7 +3,6 @@
 BEGIN;
 
 ALTER TABLE customers
-  DROP COLUMN is_subcontractor,
   DROP COLUMN account_manager,
   DROP COLUMN tripletex_contact_id;
 

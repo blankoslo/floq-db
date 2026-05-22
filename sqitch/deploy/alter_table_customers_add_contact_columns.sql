@@ -6,7 +6,6 @@
 BEGIN;
 
 ALTER TABLE customers
-  ADD COLUMN is_subcontractor     boolean NOT NULL DEFAULT false,
   ADD COLUMN account_manager      integer REFERENCES employees(id),
   ADD COLUMN tripletex_contact_id integer;
 

@@ -2,6 +2,6 @@
 
 BEGIN;
 
-SELECT is_subcontractor, account_manager, tripletex_contact_id FROM customers;
+SELECT account_manager, tripletex_contact_id FROM customers;
 
 ROLLBACK;

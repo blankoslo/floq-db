@@ -2,6 +2,8 @@
 
 BEGIN;
 
-ALTER TABLE projects DROP COLUMN has_subcontractor_consultants;
+ALTER TABLE projects
+  DROP COLUMN has_subcontractor_consultants,
+  DROP COLUMN is_subcontractor;
 
 COMMIT;

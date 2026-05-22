@@ -2,6 +2,6 @@
 
 BEGIN;
 
-SELECT has_subcontractor_consultants FROM projects;
+SELECT has_subcontractor_consultants, is_subcontractor FROM projects;
 
 ROLLBACK;
