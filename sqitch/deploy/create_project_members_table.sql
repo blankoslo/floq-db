@@ -5,12 +5,11 @@
 BEGIN;
 
 CREATE TABLE project_members (
-  id            SERIAL PRIMARY KEY,
-  employee_id   integer NOT NULL REFERENCES employees(id),
-  project_id    text    NOT NULL REFERENCES projects(id),
-  hourly_rate   numeric NOT NULL,
-  from_date     date    NOT NULL,
-  to_date       date
+  id          SERIAL PRIMARY KEY,
+  employee_id integer NOT NULL REFERENCES employees(id),
+  customer_id integer NOT NULL REFERENCES customers(id),
+  hourly_rate numeric NOT NULL,
+  from_date   date    NOT NULL
 );
 
 GRANT ALL PRIVILEGES ON TABLE project_members TO employee;
