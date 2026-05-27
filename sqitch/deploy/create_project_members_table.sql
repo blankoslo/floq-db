@@ -7,7 +7,7 @@ BEGIN;
 CREATE TABLE project_members (
   id          SERIAL PRIMARY KEY,
   employee_id integer NOT NULL REFERENCES employees(id),
-  customer_id integer NOT NULL REFERENCES customers(id),
+  customer_id text    NOT NULL REFERENCES customers(id),
   hourly_rate numeric NOT NULL,
   from_date   date    NOT NULL
 );
