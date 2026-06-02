@@ -6,6 +6,6 @@ BEGIN;
 
 ALTER TABLE project_members
   ADD COLUMN to_date   date,
-  ADD COLUMN project_id integer REFERENCES projects(id);
+  ADD COLUMN project_id text REFERENCES projects(id);
 
 COMMIT;
