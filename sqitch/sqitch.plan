@@ -103,3 +103,4 @@ alter_table_customers_add_contact_columns [time_tracking_tables employees_table 
 create_project_members_table [employees_table time_tracking_tables] 2026-05-22T10:01:00Z Sander Magnussen Neraas <sander.neraas@blank.no> # Create project_members table
 alter_table_projects_add_subcontractor_flag [time_tracking_tables] 2026-05-22T10:02:00Z Sander Magnussen Neraas <sander.neraas@blank.no> # Add has_subcontractor_consultants flag to projects
 alter_reference_and_comment_to_projects 2026-05-29T11:01:45Z Sergey Jakobsen <sergey@blank.no> # Add reference and comment fields to projects table
+alter_table_project_members_table 2026-06-02T08:38:37Z sqitch <sergey@blank.no> # Add to_date and project code to project members table
