@@ -13,4 +13,7 @@ CREATE TABLE project_code_pins (
   UNIQUE NULLS NOT DISTINCT (employee_id, project_id, pin_type, week)
 );
 
+GRANT ALL PRIVILEGES ON TABLE project_code_pins TO employee;
+GRANT USAGE, SELECT ON SEQUENCE project_code_pins_id_seq TO employee;
+
 COMMIT;
