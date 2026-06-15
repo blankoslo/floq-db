@@ -106,3 +106,4 @@ alter_reference_and_comment_to_projects 2026-05-29T11:01:45Z Sergey Jakobsen <se
 alter_table_project_members_table 2026-06-02T08:38:37Z sqitch <sergey@blank.no> # Add to_date and project code to project members table
 alter_projects_table 2026-06-08T09:07:00Z sqitch <sergey@blank.no> # Alter projects table
 add_time_entry_constraint 2026-06-08T15:10:48Z sqitch <sergey@blank.no> # Add constraint to time_entry table
+add_project_pins 2026-06-15T07:17:59Z Sergey Jakobsen <sergey@blank.no> # Add table to pin projects to employees
