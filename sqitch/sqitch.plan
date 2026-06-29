@@ -108,3 +108,4 @@ alter_projects_table 2026-06-08T09:07:00Z sqitch <sergey@blank.no> # Alter proje
 add_time_entry_constraint 2026-06-08T15:10:48Z sqitch <sergey@blank.no> # Add constraint to time_entry table
 add_project_pins 2026-06-15T07:17:59Z Sergey Jakobsen <sergey@blank.no> # Add table to pin projects to employees
 add_internal_name_to_projects 2026-06-24T10:29:34Z Sergey Jakobsen <sergey@blank.no> # Add internal name to projects
+add_order_group_id_to_invoice_lock_events [add_invoice_lock_events_table] 2026-06-25T09:30:00Z Andreas Jonassen <andreas.jonassen@blank.no> # Add order_group_id to invoice_lock_events for per-project Tripletex reconciliation
