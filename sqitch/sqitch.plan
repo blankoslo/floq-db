@@ -113,3 +113,4 @@ alter_table_customers_add_tripletex_attn_id 2026-08-03T12:20:26Z Sergey Jakobsen
 add_tripletex_attn_id_to_projects 2026-08-03T13:04:17Z Sergey Jakobsen <sergey@blank.no> # Add Attn. id from Tripletex to projects
 remove_tripletex_attn_id_from_customers [alter_table_customers_add_tripletex_attn_id] 2026-08-04T10:03:30Z Sergey Jakobsen <sergey@blank.no> # Remove tripletex attn id from customers table
 remove_to_date_and_project_id_from_project_members [alter_table_project_members_table] 2026-08-04T10:03:58Z Sergey Jakobsen <sergey@blank.no> # Remove to_date and project_id from project_members table
+add_week_balance_confirmations_table [employees_table] 2026-08-06T07:45:07Z Tobias Paulsen <tobias.paulsen@blank.no> # Add week_balance_confirmations_table
