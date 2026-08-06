@@ -14,13 +14,12 @@ CREATE TABLE week_balance_confirmations (
 
     -- week_start must be the ISO Monday of the week it describes.
     CONSTRAINT week_balance_confirmations_week_start_is_monday
-        CHECK (EXTRACT(ISODOW FROM week_start) = 1)
+        CHECK (EXTRACT(ISODOW FROM week_start) = 1),
+
+    UNIQUE (employee, week_start)
 );
 
-CREATE INDEX week_balance_confirmations_lookup_idx
-    ON week_balance_confirmations (employee, week_start, created DESC);
-
-GRANT SELECT, INSERT ON TABLE week_balance_confirmations TO employee;
+GRANT SELECT, INSERT, UPDATE ON TABLE week_balance_confirmations TO employee;
 GRANT USAGE, SELECT ON SEQUENCE week_balance_confirmations_id_seq TO employee;
 
 COMMIT;
