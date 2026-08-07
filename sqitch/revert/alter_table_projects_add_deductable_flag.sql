@@ -2,8 +2,7 @@
 
 BEGIN;
 
--- XXX Add DDLs here.
 ALTER TABLE projects
-    DROP COLUMN deductable
+    DROP COLUMN deductable;
 
 COMMIT;
