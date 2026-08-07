@@ -100,4 +100,5 @@ BEGIN
 
     RETURN result;
 END
-$$ LANGUAGE plpgsql;
+-- STABLE because this only reads; the apps call it over GET.
+$$ LANGUAGE plpgsql STABLE;
