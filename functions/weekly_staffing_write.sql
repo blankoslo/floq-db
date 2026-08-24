@@ -1,11 +1,49 @@
 -- =============================================================================
 -- Weekly staffing capacity — the company rule, in one place.
 --
--- The rule: a person's week holds at most `capacity_days` working days.
--- Booking days that do not fit takes them from work already booked that week,
--- largest allocation first, one day at a time. Absence is NEVER taken from —
--- it lives in a different table and is only ever changed in the absence
--- calendar.
+-- A person's week holds at most `capacity_days` working days. Two separate
+-- questions follow from that, and keeping them apart is the whole point:
+--
+--   Granting      How many days the booking being made now gets. Bounded by the
+--                 length of the week, and by anything else booked in the same
+--                 call. NOT by absence.
+--
+--   Displacement  How many days the bookings ALREADY in the week have to give
+--                 up. Only a new booking causes this — largest allocation
+--                 first, one day at a time. NOT absence.
+--
+-- Absence appears in neither. It is read here, to report how much of the plan it
+-- covers, and it is never written and never taken from: it lives in a different
+-- table and is only ever changed in the absence calendar.
+--
+-- So `staffing` holds what somebody *planned*, and with absence present the
+-- non-absence allocations plus the absence can add up to more than
+-- `capacity_days`. That is the point, not a defect. 5 booked days plus 2 days of
+-- ferie is a plan the ferie has overtaken; the week is still only going to
+-- happen 3 days' worth, and every reader works that out for itself.
+-- displaceByAbsence.ts in floq-staffing-v3 is the display rule, and it shaves in
+-- this same largest-first order.
+--
+-- Why not write the smaller number down instead?
+--
+-- Anna is booked 5 days on ANE1006 and then takes 2 days off. Shave ANE1006 to 3
+-- in the table, and when she cancels those days she is left on 3: two days of
+-- somebody's plan are gone and nothing anywhere remembers they existed. Leave it
+-- at 5 and cancelling the absence gives her a full week back by itself. The
+-- alternative needs machinery this does not have — absence is inserted and
+-- deleted by the fraværskalender, which knows nothing about staffing, so "shrink
+-- it now, put it back later" would mean a trigger on `absence` and a record of
+-- what was taken from whom.
+--
+-- The same argument covers granting. If Knut staffs Anna 5 days in a week she is
+-- already away 2 of, storing 3 throws away what he asked for; storing 5 keeps it,
+-- and `absence.hidden_days` in the result tells him 2 of those days are not going
+-- to happen. He is informed either way — but only one of them survives Anna
+-- changing her mind.
+--
+-- The second reason is blast radius. Booking one day of BLA1000 into Anna's week
+-- used to take three days off ANE1006 — a project the caller never named, picked
+-- by a largest-first tie-break, and saved for good.
 --
 -- Split into a pure planner and a thin applier on purpose:
 --
@@ -78,16 +116,39 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 --   { "capacity_days": 5,
 --     "allocations": [{"project":"X","days":2,"absence":false}, ...],
 --     "displaced":   [{"project":"Y","days_before":4,"days_after":2}, ...],
---     "refused":     [{"project":"X","requested_days":4,"granted_days":1,
---                      "shortfall_days":3,"reason":"...","blocked_by":["FER1000"]}] }
+--     "refused":     [{"project":"X","requested_days":6,"granted_days":5,
+--                      "shortfall_days":1,"reason":"...","blocked_by":[]}],
+--                     -- blocked_by is now always empty; see below
+--     "absence":     {"days":2,"hidden_days":2,"blocked_by":["FER1000"],
+--                     "protected":true} }
 --
 -- `allocations` is the complete intended end state for the week, including
 -- entries at 0 days so the caller knows to delete them, and including absence
 -- (flagged) so a UI can draw the whole week. The caller must not write absence.
 --
+-- The non-absence entries sum to at most `capacity_days`. The whole list can
+-- exceed it, because absence sits on top of the plan rather than being taken out
+-- of it — see the two halves of the rule at the top of this file.
+--
+-- `displaced` therefore only ever reports work that gave way to *other work*. A
+-- booking the absence covers is not displaced: it still says what was planned,
+-- and it is intact the moment the absence goes away.
+--
+-- `absence` is how the caller finds out anyway, and is the only reason absence is
+-- read here at all:
+--   days         working days of the week the person is away
+--   hidden_days  planned days those absence days cover — what will not happen
+--   blocked_by   which kinds, so a message can name them
+--   protected    true if any of them is ferie, sykdom or permisjon, which is
+--                the difference between "she is away" and "she might yet come"
+--
 -- `reason` is a closed set:
---   exceeds_week_capacity | blocked_by_protected_absence | blocked_by_absence
---   absence_not_writable  | no_workable_days
+--   exceeds_week_capacity | absence_not_writable | no_workable_days
+--
+-- blocked_by_protected_absence and blocked_by_absence are retired: absence no
+-- longer refuses anything, it is reported in `absence` instead. The values stay
+-- named here because callers still have the labels, and nothing is gained by
+-- making an old client fail to render a reason it will never receive.
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.plan_weekly_staffing(
     in_current       jsonb,
@@ -120,6 +181,7 @@ DECLARE
     over          integer;
     big_idx       integer;
     big_val       integer;
+    hidden        integer   := 0;
     allocations   jsonb     := '[]'::jsonb;
     displaced     jsonb     := '[]'::jsonb;
     refused       jsonb     := '[]'::jsonb;
@@ -197,11 +259,17 @@ BEGIN
             t_idx       := n;
         END IF;
 
-        -- room for this project = capacity minus everything already locked
-        -- (absence, plus any target applied earlier in this same call)
+        -- Room for this project = the length of the week, minus any target
+        -- applied earlier in this same call.
+        --
+        -- Absence is deliberately NOT subtracted. Staffing Anna 5 days in a week
+        -- she is away 2 of records 5, because 5 is what was asked for and it is
+        -- the only version of it that survives her cancelling those 2 days. What
+        -- the week will actually hold is reported in `absence` below, and drawn
+        -- by the grid, rather than being enforced by throwing the request away.
         locked_sum := 0;
         FOR i IN 1..n LOOP
-            IF locked[i] AND i <> t_idx THEN
+            IF locked[i] AND NOT is_abs[i] AND i <> t_idx THEN
                 locked_sum := locked_sum + days[i];
             END IF;
         END LOOP;
@@ -216,16 +284,10 @@ BEGIN
         ELSIF cap = 0 THEN
             reason := 'no_workable_days';
         ELSIF granted < t_req THEN
-            IF t_req > cap THEN
-                reason := 'exceeds_week_capacity';
-            ELSIF absence_days > 0 THEN
-                reason := CASE WHEN has_protected
-                               THEN 'blocked_by_protected_absence'
-                               ELSE 'blocked_by_absence'
-                          END;
-            ELSE
-                reason := 'exceeds_week_capacity';
-            END IF;
+            -- The only way to fall short now: more days than the week has, or
+            -- more than is left after something else in the same batch took its
+            -- share. Both are "ikke plass i uka".
+            reason := 'exceeds_week_capacity';
         ELSE
             reason := NULL;
         END IF;
@@ -237,7 +299,12 @@ BEGIN
                 'granted_days',   granted,
                 'shortfall_days', t_req - granted,
                 'reason',         reason,
-                'blocked_by',     to_jsonb(blocked_by)
+                -- Always empty now, and kept only so the shape does not change
+                -- under a client that reads it. Absence blocks nothing, so
+                -- listing the week's absence codes against a refusal caused by
+                -- the length of the week would read as a cause it is not.
+                -- `absence.blocked_by` is where those codes belong.
+                'blocked_by',     '[]'::jsonb
             ));
         END IF;
 
@@ -249,10 +316,28 @@ BEGIN
         was_target[t_idx] := true;
 
         -- ---- displace: shave one day off the largest movable, then look again
+        --
+        -- `total` adds up the bookings and skips absence. That skip is the fix:
+        -- a week's worth of work has to fit in a week, but absence is not work
+        -- being planned and must not push aside work that already is.
+        --
+        -- Anna has 3 days ANE1006 and 2 days off. Book her 2 days of KUN1001:
+        --
+        --   counting absence  3 + 2 + 2 = 7, two over a 5-day week, so ANE1006 is
+        --                     shaved to 1 and saved that way. She cancels the 2
+        --                     days off and is on 3 of 5, with nothing left to say
+        --                     where the other 2 went.
+        --
+        --   bookings only     3 + 2 = 5, which fits, so ANE1006 keeps its 3. The
+        --                     grid still draws the week as full, because the
+        --                     absence is drawn over the top of it. She cancels,
+        --                     and the full week is simply there again.
         LOOP
             total := 0;
             FOR i IN 1..n LOOP
-                total := total + days[i];
+                IF NOT is_abs[i] THEN
+                    total := total + days[i];
+                END IF;
             END LOOP;
 
             over := total - cap;
@@ -276,12 +361,17 @@ BEGIN
     END LOOP;
 
     -- ---- results ------------------------------------------------------------
+    total := 0;
     FOR i IN 1..n LOOP
         allocations := allocations || jsonb_build_array(jsonb_build_object(
             'project', proj[i],
             'days',    days[i],
             'absence', is_abs[i]
         ));
+
+        IF NOT is_abs[i] THEN
+            total := total + days[i];
+        END IF;
 
         IF NOT was_target[i] AND NOT is_abs[i] AND days[i] <> before_days[i] THEN
             displaced := displaced || jsonb_build_array(jsonb_build_object(
@@ -292,11 +382,24 @@ BEGIN
         END IF;
     END LOOP;
 
+    -- How much of the plan the absence covers. The same arithmetic the grid
+    -- draws with: the days left after absence are all that can hold work, and
+    -- anything planned beyond them is not going to happen.
+    --
+    -- Nothing here changes what is written. It is what lets a caller say "saved,
+    -- and 2 of those days are ferie" instead of either lying or refusing.
+    hidden := GREATEST(total - GREATEST(cap - absence_days, 0), 0);
+
     RETURN jsonb_build_object(
         'capacity_days', cap,
         'allocations',   allocations,
         'displaced',     displaced,
-        'refused',       refused
+        'refused',       refused,
+        'absence',       jsonb_build_object(
+                             'days',        absence_days,
+                             'hidden_days', hidden,
+                             'blocked_by',  to_jsonb(blocked_by),
+                             'protected',   has_protected)
     );
 END
 $$ LANGUAGE plpgsql IMMUTABLE;
@@ -589,6 +692,11 @@ $$ LANGUAGE plpgsql;
 -- (a weekly cross-row sum cannot be a CHECK, and a trigger would reject
 -- legitimate corrections to rows that are already overbooked). The invariant
 -- is enforced in one write path; this is how reports find the rest.
+--
+-- Absence is not taken out of the plan, so a full week that somebody later took
+-- time off in shows up here. That is expected rather than a fault. The invariant
+-- still worth checking is the bookings alone fitting the week: for that, drop
+-- the join to `away` and compare `s.d` to `cap` on its own.
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.overbooked_weeks(start_date date, end_date date)
 RETURNS TABLE (

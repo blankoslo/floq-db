@@ -90,8 +90,12 @@ BEGIN
          '2: the week must total exactly 5 days';
 
   -- ===========================================================================
-  -- 3. ferie is never touched, and the shortfall is reported
+  -- 3. ferie is never touched, and never clips the booking either
   -- ===========================================================================
+  -- The full ask is written. Ferie is a fact about the person, not a smaller
+  -- number to save in place of what somebody asked for — she may cancel it, and
+  -- then the week has to be the week Knut planned. How much of it will actually
+  -- happen comes back in `absence`.
   DELETE FROM staffing WHERE employee = emp AND date BETWEEN week_start AND (week_start + 4)::date;
   INSERT INTO absence (employee_id, date, reason)
   SELECT emp, available_date, 'FER1000'
@@ -101,13 +105,15 @@ BEGIN
            jsonb_build_array(jsonb_build_object(
              'employee', emp, 'week', wk, 'project', p1, 'days', 3)));
 
-  -- One day fitted, so this is a partial save with a shortfall, not a refusal.
-  -- Only a week that got nothing at all counts as refused.
-  ASSERT (res->>'applied_weeks')::int = 1, '3: one day fitted, so it is a save';
+  ASSERT (res->>'applied_weeks')::int = 1, '3: saved';
   ASSERT (res->>'refused_weeks')::int = 0, '3: and not a refusal';
-  ASSERT res->'weeks'->0->'refused'->0->>'reason' = 'blocked_by_protected_absence',
-         '3: wrong reason: ' || COALESCE(res->'weeks'->0->'refused'->0->>'reason','null');
-  ASSERT (res->'weeks'->0->'refused'->0->>'shortfall_days')::int = 2, '3: 2 days should not fit';
+  ASSERT jsonb_array_length(res->'weeks'->0->'refused') = 0,
+         '3: ferie refuses nothing, got ' || (res->'weeks'->0->'refused')::text;
+  ASSERT (res->'weeks'->0->'absence'->>'days')::int = 4, '3: 4 days away';
+  ASSERT (res->'weeks'->0->'absence'->>'hidden_days')::int = 2,
+         '3: 1 day is free, so 2 of the 3 will not happen, got '
+         || (res->'weeks'->0->'absence'->>'hidden_days');
+  ASSERT (res->'weeks'->0->'absence'->>'protected')::boolean, '3: ferie is protected';
 
   SELECT COUNT(*) INTO ferie_rows FROM absence
    WHERE employee_id = emp AND reason = 'FER1000'
@@ -117,7 +123,7 @@ BEGIN
   SELECT ROUND(SUM(percentage) / 100.0)::integer INTO d1
     FROM staffing WHERE employee = emp AND project = p1
      AND date BETWEEN week_start AND (week_start + 4)::date;
-  ASSERT COALESCE(d1, 0) = 1, '3: only 1 day should fit, got ' || COALESCE(d1::text,'0');
+  ASSERT COALESCE(d1, 0) = 3, '3: all 3 days should be recorded, got ' || COALESCE(d1::text,'0');
 
   -- ===========================================================================
   -- 4. dry run changes nothing
@@ -232,7 +238,9 @@ BEGIN
      AND date BETWEEN week_start AND (week_start + 4)::date;
   ASSERT d1 = 4, '8: the week is full at 4 days, got ' || COALESCE(d1::text,'null');
 
-  -- and a week where NOTHING was granted is still a refusal
+  -- A week that is entirely ferie is still a save. Nothing of it will happen
+  -- while the ferie stands, and `hidden_days` says so — but the plan is what was
+  -- asked for, and it is what she comes back to if she cancels.
   DELETE FROM staffing WHERE employee = emp AND date BETWEEN week_start AND (week_start + 4)::date;
   INSERT INTO absence (employee_id, date, reason)
   SELECT emp, available_date, 'FER1000'
@@ -241,8 +249,15 @@ BEGIN
   res := apply_weekly_staffing(
            jsonb_build_array(jsonb_build_object(
              'employee', emp, 'week', wk, 'project', p1, 'days', 3)));
-  ASSERT (res->>'refused_weeks')::int = 1, '8: nothing granted is still refused';
-  ASSERT (res->>'applied_weeks')::int = 0, '8: and not applied';
+  ASSERT (res->>'applied_weeks')::int = 1, '8: a full week of ferie is still a save';
+  ASSERT (res->>'refused_weeks')::int = 0, '8: and not a refusal';
+  ASSERT (res->'weeks'->0->'absence'->>'hidden_days')::int = 3,
+         '8: none of the 3 days will happen';
+
+  SELECT ROUND(SUM(percentage) / 100.0)::integer INTO d1
+    FROM staffing WHERE employee = emp AND project = p1
+     AND date BETWEEN week_start AND (week_start + 4)::date;
+  ASSERT COALESCE(d1, 0) = 3, '8: and it is on record, got ' || COALESCE(d1::text,'0');
 
   -- ===========================================================================
   -- 9. a day carrying two kinds of absence is one day gone, not two
@@ -276,15 +291,72 @@ BEGIN
      AND date BETWEEN week_start AND (week_start + 4)::date;
   ASSERT d1 = 2, '9: both days should fit, got ' || COALESCE(d1::text,'null');
 
-  -- and the third day is genuinely gone: asking for 3 leaves one short
+  -- and the third day is genuinely gone: the week only has two free days, so
+  -- asking for 3 records 3 and reports one of them as hidden
   DELETE FROM staffing WHERE employee = emp AND date BETWEEN week_start AND (week_start + 4)::date;
   res := apply_weekly_staffing(
            jsonb_build_array(jsonb_build_object(
              'employee', emp, 'week', wk, 'project', p1, 'days', 3)));
-  ASSERT (res->'weeks'->0->'refused'->0->>'shortfall_days')::int = 1,
-         '9: the week holds two, so the third day is short';
+  ASSERT (res->'weeks'->0->'absence'->>'days')::int = 3,
+         '9: three DATES are away, not the four the two reasons would sum to';
+  ASSERT (res->'weeks'->0->'absence'->>'hidden_days')::int = 1,
+         '9: the week holds two, so the third day is hidden, got '
+         || (res->'weeks'->0->'absence'->>'hidden_days');
 
-  RAISE NOTICE 'apply_weekly_staffing: all 9 scenarios passed';
+  -- ===========================================================================
+  -- 10. THE REGRESSION THIS CHANGE EXISTS FOR
+  -- ===========================================================================
+  -- A full week, then absence lands on it, then somebody edits ONE cell for an
+  -- unrelated project. The first project's rows must still be there afterwards.
+  --
+  -- Before: the edit settled the whole week around the ferie and saved it, so p1
+  -- went from 5 days to 2 in the table. Cancelling the ferie left her on 2 with
+  -- nothing recording that 3 days had ever been planned — and the edit that did
+  -- it never mentioned p1 at all.
+  DELETE FROM staffing WHERE employee = emp AND date BETWEEN week_start AND (week_start + 4)::date;
+  DELETE FROM absence  WHERE employee_id = emp AND date BETWEEN week_start AND (week_start + 4)::date;
+
+  PERFORM apply_weekly_staffing(
+            jsonb_build_array(jsonb_build_object(
+              'employee', emp, 'week', wk, 'project', p1, 'days', 5)));
+
+  INSERT INTO absence (employee_id, date, reason)
+  SELECT emp, available_date, 'FER1000'
+    FROM available_dates_new(week_start, (week_start + 1)::date);   -- Mon, Tue
+
+  -- one unrelated day, on a different project
+  res := apply_weekly_staffing(
+           jsonb_build_array(jsonb_build_object(
+             'employee', emp, 'week', wk, 'project', p2, 'days', 1)));
+
+  SELECT ROUND(SUM(percentage) / 100.0)::integer INTO d1
+    FROM staffing WHERE employee = emp AND project = p1
+     AND date BETWEEN week_start AND (week_start + 4)::date;
+  SELECT ROUND(SUM(percentage) / 100.0)::integer INTO d2
+    FROM staffing WHERE employee = emp AND project = p2
+     AND date BETWEEN week_start AND (week_start + 4)::date;
+
+  -- p1 gives up exactly one day, to p2 — that is work displacing work. The two
+  -- days of ferie take nothing.
+  ASSERT d1 = 4, '10: p1 SHOULD ONLY LOSE THE ONE DAY p2 TOOK, got '
+                 || COALESCE(d1::text,'null');
+  ASSERT d2 = 1, '10: p2 booked, got ' || COALESCE(d2::text,'null');
+  ASSERT (res->'weeks'->0->'absence'->>'hidden_days')::int = 2,
+         '10: 2 of the 5 planned days are ferie';
+
+  -- now she cancels the ferie: the week is full again, with no repair
+  DELETE FROM absence WHERE employee_id = emp
+     AND date BETWEEN week_start AND (week_start + 4)::date;
+
+  SELECT ROUND(SUM(percentage) / 100.0)::integer INTO d1
+    FROM staffing WHERE employee = emp AND project = p1
+     AND date BETWEEN week_start AND (week_start + 4)::date;
+  ASSERT d1 = 4, '10: THE PLAN MUST SURVIVE THE FERIE, got ' || COALESCE(d1::text,'null');
+  ASSERT (SELECT SUM(percentage) FROM staffing
+           WHERE employee = emp AND date BETWEEN week_start AND (week_start + 4)::date) = 500,
+         '10: and it is a full week again';
+
+  RAISE NOTICE 'apply_weekly_staffing: all 10 scenarios passed';
 END
 $test$;
 
