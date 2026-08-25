@@ -16,21 +16,14 @@ have “real” data during development.
 - Prepend to `db-replicate` script:
 
   ```sh
-   PG_SRC_DB=floq
-   PG_SRC_USER=root
-   PG_SRC_PASS=password
-   PG_SRC_HOST=floq-test.caawuzisqucy.eu-central-1.rds.amazonaws.com
-
-   PG_DST_DB=floq
-   PG_DST_USER=root
-   PG_DST_PASS=password
-   PG_DST_HOST=localhost
+   PG_SRC_URL=postgres://root:password@floq-test.caawuzisqucy.eu-central-1.rds.amazonaws.com/floq
+   PG_DST_URL=postgres://root:password@localhost/floq
   ```
 
-- At `PG_SRC_PASS`, add password from 1password under "Floq: Blank – test – root"
+- In `PG_SRC_URL`, add password from 1password under "Floq: Blank – test – root"
 - In the Dockerfile, edit:
-  - `ENV PG_SRC_HOST=floq-test.caawuzisqucy.eu-central-1.rds.amazonaws.com`
-  - `ENV PG_DST_HOST=host.docker.internal`
+  - `ENV PG_SRC_URL=postgres://root:password@floq-test.caawuzisqucy.eu-central-1.rds.amazonaws.com/floq`
+  - `ENV PG_DST_URL=postgres://root:password@host.docker.internal/floq`
 - In `db-replicate`, remove `/` from where it says `db_*.sql`
 - Run `./db-replicate`
 

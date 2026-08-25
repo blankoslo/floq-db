@@ -1,14 +1,7 @@
 FROM postgres:15-alpine
 
-ENV PG_SRC_DB=floq
-ENV PG_SRC_USER=root
-ENV PG_SRC_PASS=password
-ENV PG_SRC_HOST=localhost
-
-ENV PG_DST_DB=floq
-ENV PG_DST_USER=root
-ENV PG_DST_PASS=password
-ENV PG_DST_HOST=localhost
+ENV PG_SRC_URL=postgres://root:password@localhost/floq
+ENV PG_DST_URL=postgres://root:password@localhost/floq
 
 ADD db-replicate /db-replicate
 ADD db_drop_all.sql /db_drop_all.sql
