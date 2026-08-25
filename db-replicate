@@ -1,8 +1,9 @@
 #!/bin/sh
+set -eu -o pipefail
 
 # Replicate schema
 
-psql "$PG_DST_URL" -f /db_drop_all.sql
+psql -v ON_ERROR_STOP=1 "$PG_DST_URL" -f /db_drop_all.sql
 
 pg_dump --schema-only --format=c \
   "$PG_SRC_URL" \
@@ -10,11 +11,11 @@ pg_dump --schema-only --format=c \
 
 # Replicate data
 
-psql "$PG_DST_URL" -f /db_disable_fks.sql
+psql -v ON_ERROR_STOP=1 "$PG_DST_URL" -f /db_disable_fks.sql
 
 pg_dump --data-only --format=c \
     "$PG_SRC_URL" \
       | pg_restore -d "$PG_DST_URL"
 
-psql "$PG_DST_URL" -f /db_enable_fks.sql
+psql -v ON_ERROR_STOP=1 "$PG_DST_URL" -f /db_enable_fks.sql
 

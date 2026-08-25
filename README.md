@@ -13,19 +13,22 @@ have “real” data during development.
 
 ### Running the script
 
-- Prepend to `db-replicate` script:
+- Export the connection URLs in your shell (don't commit real credentials to any tracked file):
 
   ```sh
-   PG_SRC_URL=postgres://root:password@floq-test.caawuzisqucy.eu-central-1.rds.amazonaws.com/floq
-   PG_DST_URL=postgres://root:password@localhost/floq
+   export PG_SRC_URL=postgres://root:PASSWORD@floq-test.caawuzisqucy.eu-central-1.rds.amazonaws.com/floq
+   export PG_DST_URL=postgres://root:password@localhost/floq
   ```
 
-- In `PG_SRC_URL`, add password from 1password under "Floq: Blank – test – root"
-- In the Dockerfile, edit:
-  - `ENV PG_SRC_URL=postgres://root:password@floq-test.caawuzisqucy.eu-central-1.rds.amazonaws.com/floq`
-  - `ENV PG_DST_URL=postgres://root:password@host.docker.internal/floq`
-- In `db-replicate`, remove `/` from where it says `db_*.sql`
+- For `PG_SRC_URL`, use the password from 1password under "Floq: Blank – test – root"
+- In `db-replicate`, remove `/` from where it says `db_*.sql` (the SQL files live alongside the script rather than at `/` when run outside the container)
 - Run `./db-replicate`
+
+To run it via Docker/Podman instead, pass the URLs at container run time rather than editing the Dockerfile, e.g.:
+
+```sh
+docker run --rm -e PG_SRC_URL -e PG_DST_URL floq-db-replicate
+```
 
 ## Empty test database?
 
