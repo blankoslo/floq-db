@@ -13,26 +13,22 @@ have “real” data during development.
 
 ### Running the script
 
-- Prepend to `db-replicate` script:
+- Export the connection URLs in your shell (don't commit real credentials to any tracked file):
 
   ```sh
-   PG_SRC_DB=floq
-   PG_SRC_USER=root
-   PG_SRC_PASS=password
-   PG_SRC_HOST=floq-test.caawuzisqucy.eu-central-1.rds.amazonaws.com
-
-   PG_DST_DB=floq
-   PG_DST_USER=root
-   PG_DST_PASS=password
-   PG_DST_HOST=localhost
+   export PG_SRC_URL=postgres://root:PASSWORD@floq-test.caawuzisqucy.eu-central-1.rds.amazonaws.com/floq
+   export PG_DST_URL=postgres://root:password@localhost/floq
   ```
 
-- At `PG_SRC_PASS`, add password from 1password under "Floq: Blank – test – root"
-- In the Dockerfile, edit:
-  - `ENV PG_SRC_HOST=floq-test.caawuzisqucy.eu-central-1.rds.amazonaws.com`
-  - `ENV PG_DST_HOST=host.docker.internal`
-- In `db-replicate`, remove `/` from where it says `db_*.sql`
+- For `PG_SRC_URL`, use the password from 1password under "Floq: Blank – test – root"
+- In `db-replicate`, remove `/` from where it says `db_*.sql` (the SQL files live alongside the script rather than at `/` when run outside the container)
 - Run `./db-replicate`
+
+To run it via Docker/Podman instead, pass the URLs at container run time rather than editing the Dockerfile, e.g.:
+
+```sh
+docker run --rm -e PG_SRC_URL -e PG_DST_URL floq-db-replicate
+```
 
 ## Empty test database?
 

@@ -1,25 +1,21 @@
 #!/bin/sh
+set -eu -o pipefail
 
 # Replicate schema
 
-PGPASSWORD="$PG_DST_PASS" psql -h "$PG_DST_HOST" -U "$PG_DST_USER" \
-  "$PG_DST_DB" -f /db_drop_all.sql \
+psql -v ON_ERROR_STOP=1 "$PG_DST_URL" -f /db_drop_all.sql
 
 pg_dump --schema-only --format=c \
-  "postgres://${PG_SRC_USER}:${PG_SRC_PASS}@${PG_SRC_HOST}/${PG_SRC_DB}" \
-  | PGPASSWORD="$PG_DST_PASS" pg_restore \
-    -h "$PG_DST_HOST" -U "$PG_DST_USER" -d "$PG_DST_DB"
+  "$PG_SRC_URL" \
+  | pg_restore -d "$PG_DST_URL"
 
 # Replicate data
 
-PGPASSWORD="$PG_DST_PASS" psql -h "$PG_DST_HOST" -U "$PG_DST_USER" \
-  "$PG_DST_DB" -f /db_disable_fks.sql
+psql -v ON_ERROR_STOP=1 "$PG_DST_URL" -f /db_disable_fks.sql
 
 pg_dump --data-only --format=c \
-    "postgres://${PG_SRC_USER}:${PG_SRC_PASS}@${PG_SRC_HOST}/${PG_SRC_DB}" \
-      | PGPASSWORD="$PG_DST_PASS" pg_restore \
-        -h "$PG_DST_HOST" -U "$PG_DST_USER" -d "$PG_DST_DB"
+    "$PG_SRC_URL" \
+      | pg_restore -d "$PG_DST_URL"
 
-PGPASSWORD="$PG_DST_PASS" psql -h "$PG_DST_HOST" -U "$PG_DST_USER" \
-  "$PG_DST_DB" -f /db_enable_fks.sql
+psql -v ON_ERROR_STOP=1 "$PG_DST_URL" -f /db_enable_fks.sql
 
