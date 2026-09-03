@@ -43,23 +43,25 @@ week_calendar AS (
   LEFT JOIN workday wd ON wd.week_start = w.week_start
   GROUP BY w.week_start, w.week_end
 ),
+logged_day AS (
+  SELECT DISTINCT te.employee AS employee_id, te.date AS day
+  FROM bounds, time_entry te
+  WHERE te.date BETWEEN first_monday AND last_sunday
+),
 employee_week AS (
   SELECT e.id AS employee_id,
          wc.week_start,
          wc.week_end,
          wc.workdays,
          count(wd.day)::integer AS employed_days,
-         count(wd.day) FILTER (
-           WHERE NOT EXISTS (
-             SELECT 1 FROM time_entry te WHERE te.employee = e.id AND te.date = wd.day
-           )
-         )::integer AS unregistered_days
+         count(wd.day) FILTER (WHERE ld.day IS NULL)::integer AS unregistered_days
   FROM employees e
   CROSS JOIN week_calendar wc
   LEFT JOIN workday wd
          ON wd.week_start = wc.week_start
         AND wd.day >= e.date_of_employment
         AND (e.termination_date IS NULL OR wd.day <= e.termination_date)
+  LEFT JOIN logged_day ld ON ld.employee_id = e.id AND ld.day = wd.day
   WHERE e.date_of_employment <= wc.week_end
     AND (e.termination_date IS NULL OR e.termination_date >= wc.week_start)
   GROUP BY e.id, wc.week_start, wc.week_end, wc.workdays
