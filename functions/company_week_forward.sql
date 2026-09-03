@@ -11,7 +11,7 @@ RETURNS TABLE(
   capacity_hours double precision,
   staffed_billable_hours double precision,
   staffed_nonbillable_hours double precision,
-  free_hours double precision,
+  staffed_unavailable_hours double precision,
   staffed_fg double precision,
   last_staffed_billable_day date,
   is_fagleder boolean
@@ -60,7 +60,8 @@ staffed AS (
   SELECT s.employee AS employee_id,
          date_trunc('week', s.date)::date AS week_start,
          coalesce(sum(s.percentage) FILTER (WHERE p.billable = 'billable'), 0) * 7.5 / 100.0 AS staffed_billable_hours,
-         coalesce(sum(s.percentage) FILTER (WHERE p.billable = 'nonbillable'), 0) * 7.5 / 100.0 AS staffed_nonbillable_hours
+         coalesce(sum(s.percentage) FILTER (WHERE p.billable = 'nonbillable'), 0) * 7.5 / 100.0 AS staffed_nonbillable_hours,
+         coalesce(sum(s.percentage) FILTER (WHERE p.billable = 'unavailable'), 0) * 7.5 / 100.0 AS staffed_unavailable_hours
   FROM staffing s
   JOIN projects p ON p.id = s.project
   JOIN employees e ON e.id = s.employee
@@ -82,18 +83,29 @@ last_staffed AS (
     AND (e.termination_date IS NULL OR s.date <= e.termination_date)
   GROUP BY s.employee
 ),
-planned_day AS (
-  SELECT a.employee_id,
-         a.date,
-         least(greatest(sum(a.percentage), 0), 100) AS percentage
-  FROM absence a
+planned_source AS (
+  SELECT a.employee_id, a.date, a.percentage
+  FROM bounds, absence a
   JOIN projects p ON p.id = a.reason
-  JOIN employees e ON e.id = a.employee_id
-  JOIN workday wd ON wd.day = a.date
   WHERE p.billable = 'unavailable'
-    AND a.date >= e.date_of_employment
-    AND (e.termination_date IS NULL OR a.date <= e.termination_date)
-  GROUP BY a.employee_id, a.date
+    AND a.date BETWEEN first_monday AND last_sunday
+  UNION ALL
+  SELECT s.employee, s.date, s.percentage
+  FROM bounds, staffing s
+  JOIN projects p ON p.id = s.project
+  WHERE p.billable = 'unavailable'
+    AND s.date BETWEEN first_monday AND last_sunday
+),
+planned_day AS (
+  SELECT ps.employee_id,
+         ps.date,
+         least(greatest(sum(ps.percentage), 0), 100) AS percentage
+  FROM planned_source ps
+  JOIN employees e ON e.id = ps.employee_id
+  JOIN workday wd ON wd.day = ps.date
+  WHERE ps.date >= e.date_of_employment
+    AND (e.termination_date IS NULL OR ps.date <= e.termination_date)
+  GROUP BY ps.employee_id, ps.date
 ),
 planned AS (
   SELECT pd.employee_id,
@@ -110,9 +122,10 @@ capacity AS (
          ew.employed_days,
          ew.employed_days * 7.5 AS contract_hours,
          coalesce(pl.planned_unavailable_hours, 0) AS planned_unavailable_hours,
-         greatest(0, ew.employed_days * 7.5 - coalesce(pl.planned_unavailable_hours, 0)) AS capacity_hours,
+         ew.employed_days * 7.5 - coalesce(pl.planned_unavailable_hours, 0) AS capacity_hours,
          coalesce(s.staffed_billable_hours, 0) AS staffed_billable_hours,
-         coalesce(s.staffed_nonbillable_hours, 0) AS staffed_nonbillable_hours
+         coalesce(s.staffed_nonbillable_hours, 0) AS staffed_nonbillable_hours,
+         coalesce(s.staffed_unavailable_hours, 0) AS staffed_unavailable_hours
   FROM employee_week ew
   LEFT JOIN staffed s ON s.employee_id = ew.employee_id AND s.week_start = ew.week_start
   LEFT JOIN planned pl ON pl.employee_id = ew.employee_id AND pl.week_start = ew.week_start
@@ -126,7 +139,7 @@ SELECT c.week_start,
        c.capacity_hours::double precision AS capacity_hours,
        c.staffed_billable_hours::double precision AS staffed_billable_hours,
        c.staffed_nonbillable_hours::double precision AS staffed_nonbillable_hours,
-       greatest(0, c.capacity_hours - c.staffed_billable_hours)::double precision AS free_hours,
+       c.staffed_unavailable_hours::double precision AS staffed_unavailable_hours,
        CASE WHEN c.capacity_hours > 0
             THEN (c.staffed_billable_hours / c.capacity_hours)::double precision
        END AS staffed_fg,
