@@ -76,5 +76,6 @@ JOIN projects p ON p.id = ewp.project
 JOIN customers c ON c.id = p.customer
 WHERE e.date_of_employment <= (ewp.week_start + interval '6 days')::date
   AND (e.termination_date IS NULL OR e.termination_date >= ewp.week_start)
+  AND (ewp.logged_hours <> 0 OR ewp.staffed_hours <> 0)
 ORDER BY ewp.week_start, ewp.employee_id, ewp.project;
 $function$;
