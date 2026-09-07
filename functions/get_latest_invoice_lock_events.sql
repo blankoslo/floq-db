@@ -1,3 +1,5 @@
+DROP FUNCTION IF EXISTS public.get_latest_invoice_lock_events(text[], date, date);
+
 CREATE OR REPLACE FUNCTION public.get_latest_invoice_lock_events(in_project_ids text[],
                                                                   in_start_date date,
                                                                   in_end_date date)
@@ -7,9 +9,9 @@ CREATE OR REPLACE FUNCTION public.get_latest_invoice_lock_events(in_project_ids 
         creator_first_name text,
         creator_last_name text,
         created_at timestamp,
-        order_id integer,
+        order_id bigint,
         commit_date date,
-        order_group_id integer
+        order_group_id bigint
     )
 AS
 $function$
