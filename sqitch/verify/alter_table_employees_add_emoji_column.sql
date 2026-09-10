@@ -3,5 +3,6 @@
 BEGIN;
 
 SELECT emoji FROM employees;
+SELECT '😀'::emoji;
 
 ROLLBACK;
