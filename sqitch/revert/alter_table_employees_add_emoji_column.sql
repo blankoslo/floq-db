@@ -5,4 +5,6 @@ BEGIN;
 ALTER TABLE employees
     DROP COLUMN emoji;
 
+DROP DOMAIN emoji;
+
 COMMIT;

@@ -5,14 +5,8 @@
 
 BEGIN;
 
-CREATE OR REPLACE FUNCTION is_holiday(d date)
-        RETURNS boolean AS
-$$
-BEGIN
-  RETURN EXISTS (SELECT * FROM public.holidays WHERE holidays.date = d);
-END
-$$ LANGUAGE plpgsql;
-
+-- is_holiday is defined in sqitch (absence_table migration), not here, since
+-- a CHECK constraint there needs it to exist before functions/ has run.
 CREATE OR REPLACE FUNCTION is_weekday(d date)
         RETURNS boolean AS
 $$
