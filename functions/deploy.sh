@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 case "$1" in
      -d|--dev)
@@ -30,5 +31,5 @@ esac
 for f in *.sql
 do
  echo "deploying $f to $HOST"
- psql -f "$f" -h $HOST -d floq -U root
+ psql -v ON_ERROR_STOP=1 -f "$f" -h "$HOST" -d floq -U root
 done

@@ -8,5 +8,8 @@ INSERT INTO staffing (employee, date, project)
   );
 
 DROP TABLE absence CASCADE;
+DROP VIEW absence_reasons;
+DROP FUNCTION is_absence_reason(text);
+DROP FUNCTION is_holiday(date);
 
 COMMIT;

@@ -1,0 +1,91 @@
+name: Verify clean-slate deploy
+
+# Confirms sqitch/deploy/*.sql (in full, in order) and then functions/deploy.sh
+# both apply cleanly to a brand new, empty database, and that running
+# functions/deploy.sh a second time against that same database is a no-op.
+# Catches the exact failure modes this repo has had before: a migration or
+# function silently depending on something only manual, out-of-band deploy
+# order happened to provide, or a function/view file missing OR REPLACE that
+# fails outright on a second deploy.
+
+on:
+  push:
+    paths:
+      - 'sqitch/**'
+      - 'functions/**'
+      - '.github/workflows/verify-clean-deploy.yml'
+  pull_request:
+    paths:
+      - 'sqitch/**'
+      - 'functions/**'
+  workflow_dispatch:
+
+jobs:
+  clean-deploy:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: root
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: floq
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U root"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install postgresql-client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Substitute placeholder passwords for CI
+        # These are committed as PASSWORD NULL and expect a manual edit before
+        # a real deploy (see sqitch/README.md). CI only ever talks to the
+        # throwaway service container above, so a fixed placeholder is fine.
+        run: |
+          sed -i "s/PASSWORD NULL/PASSWORD 'ci_password'/I" \
+            sqitch/deploy/add_employee_user.sql \
+            sqitch/deploy/add_read_only_user.sql \
+            sqitch/deploy/add_trak_read_only_user.sql
+
+      - name: Configure sqitch identity
+        # The official image runs as a non-root "sqitch" user with HOME=/home,
+        # not /root — see sqitch/README.md's note on the docker wrapper script.
+        run: |
+          mkdir -p /tmp/sqitch-home/.sqitch
+          cat > /tmp/sqitch-home/.sqitch/sqitch.conf <<'EOF'
+          [user]
+              name = CI
+              email = ci@blank.no
+          EOF
+
+      - name: Deploy sqitch migrations to an empty database
+        env:
+          SQITCH_PASSWORD: ci_password
+        run: |
+          docker run --rm --network host \
+            -v "${{ github.workspace }}/sqitch:/repo" \
+            -v "/tmp/sqitch-home/.sqitch:/home/.sqitch" \
+            -w /repo \
+            -e SQITCH_PASSWORD \
+            sqitch/sqitch deploy db:pg://root@localhost/floq
+
+      - name: Deploy functions/ via deploy.sh
+        env:
+          PGPASSWORD: ci_password
+        run: (cd functions && ./deploy.sh --local)
+
+      - name: Redeploy functions/ via deploy.sh to check idempotency
+        # deploy.sh is meant to be safely re-runnable against a database that
+        # already has a previous run's objects — that's the whole convention
+        # behind "just rerun the directory". A second pass against the same
+        # database should be a total no-op if every file actually is.
+        env:
+          PGPASSWORD: ci_password
+        run: (cd functions && ./deploy.sh --local)
