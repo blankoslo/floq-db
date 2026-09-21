@@ -121,3 +121,4 @@ widen_tripletex_ids_to_bigint [add_invoice_lock_events_table add_order_group_id_
 add_reporting_assignment_rule [change_jwt_claim_retrieval add_read_only_user] 2026-09-11T15:38:25Z Zaim Imran <zaim.imran@gmail.com> # Add the global reporting assignment threshold
 add_sales_pipeline [employees_table time_tracking_tables add_employee_user add_read_only_user change_jwt_claim_retrieval] 2026-09-21T10:15:00Z Zaim Imran <zaim.imran@gmail.com> # Add the sales pipeline: stages, cases and their events
 add_sales_case_attachments [add_sales_pipeline] 2026-09-21T12:40:00Z Zaim Imran <zaim.imran@gmail.com> # Add file attachments to a sales case
+add_parkert_sales_stage [add_sales_pipeline] 2026-09-21T13:31:00Z Zaim Imran <zaim.imran@gmail.com> # Add the parkert stage, for work that is on hold rather than lost
