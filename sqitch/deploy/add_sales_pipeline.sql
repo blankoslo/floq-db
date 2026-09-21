@@ -37,7 +37,8 @@ INSERT INTO sales_event_kind (slug, label) VALUES
     ('imported',     'Importert fra Trello'),
     ('comment',      'Kommentar'),
     ('stage_change', 'Flyttet'),
-    ('field_change', 'Endret felt');
+    ('field_change', 'Endret felt'),
+    ('deleted',      'Slettet');
 
 CREATE TABLE sales_case (
     id                  TEXT        CONSTRAINT sales_case_pkey PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -76,7 +77,10 @@ CREATE INDEX sales_case_board_idx ON sales_case (stage_slug, stage_since DESC);
 
 CREATE TABLE sales_case_event (
     id          TEXT        CONSTRAINT sales_case_event_pkey PRIMARY KEY DEFAULT uuid_generate_v4(),
-    case_id     TEXT        NOT NULL REFERENCES sales_case (id) ON DELETE CASCADE,
+    -- Nullable, and SET NULL rather than CASCADE: a deleted case must not take the
+    -- record of who deleted it with it. The board reads events by case_id, so an
+    -- orphan is invisible there and still in the log.
+    case_id     TEXT        REFERENCES sales_case (id) ON DELETE SET NULL,
     kind_slug   TEXT        NOT NULL REFERENCES sales_event_kind (slug),
     body        TEXT,
     from_stage  TEXT        REFERENCES sales_stage (slug),
@@ -137,9 +141,32 @@ CREATE TRIGGER sales_case_stage_since
     FOR EACH ROW
     EXECUTE FUNCTION set_sales_case_stage_since();
 
--- A move is the one thing the board must never lose, so the row records it rather
--- than every writer remembering to. An import INSERTs its final stage and so logs
--- nothing here.
+-- Everything that happens to a case is written here, by the database rather than by
+-- each writer remembering to: whoever holds the connection is named, whatever wrote
+-- the row. That is the whole point of keeping the log down here — psql, a migration
+-- and the API all land in the same place.
+
+-- A card that came from Trello was not created here, so the import's own `imported`
+-- event stands alone rather than claiming the importer made it up.
+CREATE FUNCTION log_sales_case_created()
+    RETURNS TRIGGER
+    LANGUAGE plpgsql
+AS
+$$
+BEGIN
+    INSERT INTO sales_case_event (case_id, kind_slug, to_stage, author_id)
+    VALUES (NEW.id, 'created', NEW.stage_slug, NEW.created_by);
+
+    RETURN NULL;
+END;
+$$;
+
+CREATE TRIGGER sales_case_created
+    AFTER INSERT ON sales_case
+    FOR EACH ROW
+    WHEN (NEW.trello_card_id IS NULL)
+    EXECUTE FUNCTION log_sales_case_created();
+
 CREATE FUNCTION log_sales_case_stage_change()
     RETURNS TRIGGER
     LANGUAGE plpgsql
@@ -158,6 +185,60 @@ CREATE TRIGGER sales_case_stage_change
     FOR EACH ROW
     WHEN (NEW.stage_slug IS DISTINCT FROM OLD.stage_slug)
     EXECUTE FUNCTION log_sales_case_stage_change();
+
+-- Which fields changed, from what to what, as one event rather than one per field.
+-- Diffed generically from the row itself, so a column added later is audited without
+-- anyone remembering to list it here. The five excluded are the ones another trigger
+-- or another event already accounts for.
+CREATE FUNCTION log_sales_case_field_change()
+    RETURNS TRIGGER
+    LANGUAGE plpgsql
+AS
+$$
+DECLARE
+    changes JSONB;
+BEGIN
+    SELECT jsonb_agg(jsonb_build_object('field', key, 'from', to_jsonb(OLD) -> key, 'to', value)
+                     ORDER BY key)
+    INTO changes
+    FROM jsonb_each(to_jsonb(NEW))
+    WHERE to_jsonb(OLD) -> key IS DISTINCT FROM value
+      AND key NOT IN ('id', 'stage_slug', 'stage_since', 'created_at', 'created_by');
+
+    IF changes IS NOT NULL THEN
+        INSERT INTO sales_case_event (case_id, kind_slug, author_id, payload)
+        VALUES (NEW.id, 'field_change', logged_in_employee_id(), jsonb_build_object('changes', changes));
+    END IF;
+
+    RETURN NULL;
+END;
+$$;
+
+CREATE TRIGGER sales_case_field_change
+    AFTER UPDATE ON sales_case
+    FOR EACH ROW
+    EXECUTE FUNCTION log_sales_case_field_change();
+
+-- BEFORE, so the row is still there to describe. The event outlives the case it
+-- points at, which is why case_id is nullable.
+CREATE FUNCTION log_sales_case_deleted()
+    RETURNS TRIGGER
+    LANGUAGE plpgsql
+AS
+$$
+BEGIN
+    INSERT INTO sales_case_event (case_id, kind_slug, from_stage, author_id, payload)
+    VALUES (OLD.id, 'deleted', OLD.stage_slug, logged_in_employee_id(),
+            jsonb_build_object('case', to_jsonb(OLD)));
+
+    RETURN OLD;
+END;
+$$;
+
+CREATE TRIGGER sales_case_deleted
+    BEFORE DELETE ON sales_case
+    FOR EACH ROW
+    EXECUTE FUNCTION log_sales_case_deleted();
 
 -- A row names one author: an employee, or a Trello name we could not match.
 CREATE FUNCTION set_sales_case_event_author()

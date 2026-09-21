@@ -18,7 +18,7 @@ BEGIN
         RAISE EXCEPTION 'sales_stage is not seeded with the seven stages';
     END IF;
 
-    IF (SELECT COUNT(*) FROM sales_event_kind) <> 5 THEN
+    IF (SELECT COUNT(*) FROM sales_event_kind) <> 6 THEN
         RAISE EXCEPTION 'sales_event_kind is not seeded';
     END IF;
 
@@ -65,15 +65,24 @@ BEGIN
         RAISE EXCEPTION 'sales_case constraints do not match the expected contract';
     END IF;
 
+    -- SET NULL, not CASCADE: deleting a case must not take the record of who
+    -- deleted it with it.
     IF NOT EXISTS (
         SELECT 1
         FROM pg_catalog.pg_constraint
         WHERE conrelid = 'sales_case_event'::regclass
           AND contype = 'f'
           AND confrelid = 'sales_case'::regclass
-          AND confdeltype = 'c'
+          AND confdeltype = 'n'
+    ) OR EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'sales_case_event'
+          AND column_name = 'case_id'
+          AND is_nullable = 'NO'
     ) THEN
-        RAISE EXCEPTION 'sales_case_event does not cascade from its case';
+        RAISE EXCEPTION 'a deleted case would take its own audit trail with it';
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_indexes WHERE indexname = 'sales_case_board_idx')
@@ -81,6 +90,8 @@ BEGIN
         RAISE EXCEPTION 'the board indexes are missing';
     END IF;
 
+    -- Every change to a case is written to the log by the database, so the four
+    -- audit triggers are as load-bearing as the two that maintain columns.
     IF (
         SELECT COUNT(*)
         FROM pg_catalog.pg_trigger
@@ -88,10 +99,13 @@ BEGIN
           AND tgname IN (
               'sales_case_author',
               'sales_case_stage_since',
+              'sales_case_created',
               'sales_case_stage_change',
+              'sales_case_field_change',
+              'sales_case_deleted',
               'sales_case_event_author'
           )
-    ) <> 4 THEN
+    ) <> 7 THEN
         RAISE EXCEPTION 'the sales triggers are missing';
     END IF;
 
