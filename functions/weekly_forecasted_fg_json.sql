@@ -58,6 +58,11 @@ BEGIN
             FROM absence a
             WHERE a.date BETWEEN cur_week_start AND (cur_week_start + INTERVAL '6 days')::date
         ),
+        -- Staffing rows include public holidays. upsert_weekly_staffing() writes
+        -- a project's week on every weekday, so a plan of five days reads back
+        -- as five even when 1. mai takes one of them. They are kept here rather
+        -- than filtered, because the plan's SIZE is what they record — the cap
+        -- in billable_hours is what stops them becoming hours nobody works.
         planned AS (
             SELECT s.employee,
                    s.date,
@@ -68,6 +73,15 @@ BEGIN
             LEFT JOIN projects p ON s.project = p.id
             WHERE s.date BETWEEN cur_week_start AND (cur_week_start + INTERVAL '6 days')::date
             GROUP BY s.employee, s.date
+        ),
+        away_count AS (
+            SELECT aw.employee, COUNT(*)::numeric AS days
+            FROM away aw
+            GROUP BY aw.employee
+        ),
+        working_day_count AS (
+            SELECT COUNT(*) AS count
+            FROM available_dates_new(cur_week_start, (cur_week_start + INTERVAL '6 days')::date)
         ),
         -- `staffing` holds what was PLANNED. Absence sits on top of it and is
         -- never subtracted from it — see weekly_staffing_write.sql. Reading the
@@ -81,31 +95,57 @@ BEGIN
         -- billable and 40% internal loses 60/40 of whatever the absence covers:
         -- absence is a fact about the day, with no reason to prefer either half.
         --
-        -- On a day nobody is away this reduces to pct * billable_pct / pct, which
-        -- is billable_pct — exactly what the old query summed. Weeks with no
-        -- absence in them therefore report the same FG as before.
-        --
         -- ::numeric is load-bearing. `percentage` is an integer, so SUM() is
         -- bigint and billable_pct / pct would be integer division: an overbooked
         -- day of 130% would truncate its billable share instead of scaling it.
-        billable_hours AS (
-            SELECT COALESCE(SUM(
-                       CASE WHEN pl.pct > 0
+        per_employee AS (
+            SELECT pl.employee,
+                   SUM(CASE WHEN pl.pct > 0
+                            THEN GREATEST(pl.pct - CASE WHEN aw.date IS NULL THEN 0 ELSE 100 END, 0)
+                            ELSE 0 END) / 100.0 AS days,
+                   SUM(CASE WHEN pl.pct > 0
                             THEN GREATEST(pl.pct - CASE WHEN aw.date IS NULL THEN 0 ELSE 100 END, 0)
                                  * pl.billable_pct::numeric / pl.pct
-                            ELSE 0
-                       END
-                   ) * 7.5 / 100.0, 0) AS hours
+                            ELSE 0 END) / 100.0 AS billable_days
             FROM planned pl
             LEFT JOIN away aw ON aw.employee = pl.employee AND aw.date = pl.date
+            GROUP BY pl.employee
+        ),
+        -- Per person, then summed — the cap has to be applied to one person's
+        -- week before the company total, or somebody else's slack absorbs it.
+        --
+        -- A plan may be longer than the week can hold: five days booked into a
+        -- week holding 1. mai is four days of work and one that will not happen,
+        -- and 6 days booked into any week is overbooking. Neither can become
+        -- hours, so the plan is capped at the days the person actually has —
+        -- working days, less the ones absence has taken. The billable SHARE of
+        -- the plan is what survives the cap, which is why it is applied to
+        -- `days` and the ratio carried across: a week planned three billable to
+        -- two internal still reads three-to-two after the cap bites.
+        --
+        -- personFg.ts does the same thing with displaceByAbsence(), so the
+        -- grid's per-person figure and this company figure agree on what a
+        -- holiday week holds. The two can still differ by a band where absence
+        -- displaced something, which is documented there.
+        --
+        -- A plan that already fits is untouched: LEAST() picks `days`, the ratio
+        -- is 1, and the week reports exactly what it did before.
+        billable_hours AS (
+            SELECT COALESCE(SUM(
+                       CASE WHEN pe.days > 0
+                            THEN LEAST(pe.days,
+                                       GREATEST(wdc.count - COALESCE(ac.days, 0), 0))
+                                 * pe.billable_days / pe.days
+                            ELSE 0
+                       END
+                   ) * 7.5, 0) AS hours
+            FROM per_employee pe
+            CROSS JOIN working_day_count wdc
+            LEFT JOIN away_count ac ON ac.employee = pe.employee
         ),
         employee_count AS (
             SELECT COUNT(employee_id) AS count
             FROM get_employees_in_dates(cur_week_start, (cur_week_start + INTERVAL '6 days')::date)
-        ),
-        working_day_count AS (
-            SELECT COUNT(*) AS count
-            FROM available_dates_new(cur_week_start, (cur_week_start + INTERVAL '6 days')::date)
         ),
         potential_hours AS (
             SELECT ec.count * wdc.count * 7.5 AS hours
