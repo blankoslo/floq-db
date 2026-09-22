@@ -123,3 +123,4 @@ add_sales_pipeline [employees_table time_tracking_tables add_employee_user add_r
 add_sales_case_attachments [add_sales_pipeline] 2026-09-21T12:40:00Z Zaim Imran <zaim.imran@gmail.com> # Add file attachments to a sales case
 add_parkert_sales_stage [add_sales_pipeline] 2026-09-21T13:31:00Z Zaim Imran <zaim.imran@gmail.com> # Add the parkert stage, for work that is on hold rather than lost
 anyone_deletes_a_sales_case [add_sales_pipeline] 2026-09-22T11:10:00Z Zaim Imran <zaim.imran@gmail.com> # Let any employee delete a sales case, not only an admin
+add_sales_case_archived [add_sales_pipeline] 2026-09-22T14:05:00Z Zaim Imran <zaim.imran@gmail.com> # Record that a card was archived in Trello, and keep it off the board
