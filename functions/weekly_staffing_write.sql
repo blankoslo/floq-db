@@ -1,20 +1,59 @@
 -- =============================================================================
 -- Weekly staffing capacity — the company rule, in one place.
 --
--- A person's week holds at most `capacity_days` working days. Two separate
--- questions follow from that, and keeping them apart is the whole point:
+-- A person's week is `capacity_days` long, which is the number of WEEKDAYS in
+-- it — always 5 for Monday to Friday, whatever the calendar says. One rule
+-- follows, and it is shorter than what used to be here:
 --
---   Granting      How many days the booking being made now gets. Bounded by the
---                 length of the week, and by anything else booked in the same
---                 call. NOT by absence.
+--   Granting      Every booking gets what was asked for, capped at the LENGTH
+--                 OF THE WEEK. Nothing else is consulted: not what the week
+--                 already holds, not what else is in the same call, not absence.
 --
---   Displacement  How many days the bookings ALREADY in the week have to give
---                 up. Only a new booking causes this — largest allocation
---                 first, one day at a time. NOT absence.
+-- There is no second rule. **Nothing displaces anything.** A booking never
+-- takes days off a booking that is already there, so the bookings in a week can
+-- sum past the week, and a week that sums past the week is OVERBOOKED. That is
+-- a state to report, not an error to prevent — `overbooked_weeks()` finds them,
+-- and floq-staffing-v3 draws the person's tile with a pink border.
 --
--- Absence appears in neither. It is read here, to report how much of the plan it
--- covers, and it is never written and never taken from: it lives in a different
--- table and is only ever changed in the absence calendar.
+-- Why: a second client engagement quietly renegotiating the first is worse than
+-- a number somebody can see is too big. Booking Anna 5 days of KUN1001 into a
+-- full week of ANE1006 used to leave ANE1006 on ZERO — a project the caller
+-- never named, emptied by a largest-first tie-break, and saved that way. The
+-- planner cannot know which of the two is the mistake. The person looking at
+-- the grid can, and now has both numbers to look at.
+--
+-- Absence is the one thing that still takes days off a plan, and it does it
+-- WITHOUT being written here and without changing what is stored: it is read to
+-- report how much of the plan it covers, and the readers work the rest out.
+-- See the absence argument below, which is unchanged.
+--
+-- What this costs, and where it is paid:
+--
+--   * A typo is now a 10-day week rather than a refusal. `exceeds_week_capacity`
+--     still catches a single project asked for more than the week — 7 days of
+--     ANE1006 is still clipped to 5 — but nothing catches 5 + 5 across two.
+--     The confirmation step in the client is where that is answered.
+--   * Nothing may assume a week sums to `capacity_days`. Everything turning
+--     rows into HOURS has to mean it: staffed_hours, weekly_forecasted_fg_json,
+--     the FG denominator.
+--   * `billable` is not consulted at all any more. Sold work and internal work
+--     follow the same rule, because neither displaces. The `nonbillable` flag
+--     and `is_nonbillable_project()` that a two-budget version of this needed
+--     are both gone; if displacement ever comes back, they come back with it.
+--
+-- Neither does a public holiday, and for the same reason. Staffing Anna on
+-- ANE1006 for the week means five days; 1. mai falling on the Friday does not
+-- make that plan four days long, it makes one of the five not happen. A project
+-- row is intent, measured against the length of the week. The person row is the
+-- read-only aggregate, and THAT is where the holiday comes off — it reads
+-- availability_percentage(), which is still on available_dates_new(). Two axes,
+-- deliberately not collapsed into one.
+--
+-- The cost is that a staffing row can now sit on a holiday, so nothing may
+-- assume they are absent any more. Everything turning rows into hours filters
+-- holidays for itself: weekly_forecasted_fg_json (in its `planned` CTE),
+-- staffed_billable_hours_for_employees and its nonbillable twin, and
+-- accumulated_staffing_hours. The `staffed_hours` view already did.
 --
 -- So `staffing` holds what somebody *planned*, and with absence present the
 -- non-absence allocations plus the absence can add up to more than
@@ -69,6 +108,7 @@
 -- remove_staffing exists as both (int,text,int,int,int) in staffing_functions.sql
 -- and (int,text,date,date) in staffing_in_periods.sql.
 --
+-- DROP FUNCTION IF EXISTS public.upsert_weekly_staffing(integer, text, date, date, integer);
 -- DROP FUNCTION IF EXISTS public.plan_weekly_staffing(jsonb, jsonb, integer);
 -- DROP FUNCTION IF EXISTS public.apply_weekly_staffing(jsonb, boolean);
 -- DROP FUNCTION IF EXISTS public.restore_weekly_staffing(jsonb);
@@ -112,10 +152,14 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 -- reading a table and this function would stop being pure — which is the whole
 -- point of it.
 --
+-- `billable` is deliberately NOT an input. Sold work and internal work follow
+-- the same rule now that neither displaces, so the planner has no question to
+-- ask about it.
+--
 -- Returns:
 --   { "capacity_days": 5,
 --     "allocations": [{"project":"X","days":2,"absence":false}, ...],
---     "displaced":   [{"project":"Y","days_before":4,"days_after":2}, ...],
+--     "displaced":   [],   -- always; kept so the shape does not change
 --     "refused":     [{"project":"X","requested_days":6,"granted_days":5,
 --                      "shortfall_days":1,"reason":"...","blocked_by":[]}],
 --                     -- blocked_by is now always empty; see below
@@ -126,13 +170,15 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 -- entries at 0 days so the caller knows to delete them, and including absence
 -- (flagged) so a UI can draw the whole week. The caller must not write absence.
 --
--- The non-absence entries sum to at most `capacity_days`. The whole list can
--- exceed it, because absence sits on top of the plan rather than being taken out
--- of it — see the two halves of the rule at the top of this file.
+-- **No entry exceeds `capacity_days`, and the list as a whole may.** Each
+-- project is capped at the length of the week; nothing caps their sum, because
+-- nothing displaces. A week holding 5 days of ANE1006 and 5 of KUN1001 is ten
+-- days long and is exactly what was asked for — see the rule at the top.
 --
--- `displaced` therefore only ever reports work that gave way to *other work*. A
--- booking the absence covers is not displaced: it still says what was planned,
--- and it is intact the moment the absence goes away.
+-- `displaced` is therefore ALWAYS EMPTY. It is still returned, so a caller
+-- reading it keeps working and so the shape does not change under an older
+-- client; it is the record of a rule that no longer exists. If displacement ever
+-- comes back it has a field waiting for it.
 --
 -- `absence` is how the caller finds out anyway, and is the only reason absence is
 -- read here at all:
@@ -144,6 +190,15 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 --
 -- `reason` is a closed set:
 --   exceeds_week_capacity | absence_not_writable | no_workable_days
+--
+-- `exceeds_week_capacity` now means ONE project was asked for more than the week
+-- is long — 7 days of ANE1006 clipped to 5. It no longer fires because the week
+-- was already full: that case is a booking granted in full, and the week it
+-- makes is overbooked rather than refused.
+--
+-- apply_weekly_staffing() no longer produces no_workable_days: capacity is the
+-- weekday count of a Monday-to-Friday week, which is 5 whatever the calendar
+-- holds. It stays reachable for a caller passing in_capacity_days = 0 directly.
 --
 -- blocked_by_protected_absence and blocked_by_absence are retired: absence no
 -- longer refuses anything, it is reported in `absence` instead. The values stay
@@ -173,14 +228,9 @@ DECLARE
     t_proj        text;
     t_req         integer;
     t_idx         integer;
-    locked_sum    integer;
-    room          integer;
     granted       integer;
     reason        text;
     total         integer;
-    over          integer;
-    big_idx       integer;
-    big_val       integer;
     hidden        integer   := 0;
     allocations   jsonb     := '[]'::jsonb;
     displaced     jsonb     := '[]'::jsonb;
@@ -259,23 +309,19 @@ BEGIN
             t_idx       := n;
         END IF;
 
-        -- Room for this project = the length of the week, minus any target
-        -- applied earlier in this same call.
+        -- Room for this project is the LENGTH OF THE WEEK, and nothing else.
         --
-        -- Absence is deliberately NOT subtracted. Staffing Anna 5 days in a week
-        -- she is away 2 of records 5, because 5 is what was asked for and it is
-        -- the only version of it that survives her cancelling those 2 days. What
-        -- the week will actually hold is reported in `absence` below, and drawn
-        -- by the grid, rather than being enforced by throwing the request away.
-        locked_sum := 0;
-        FOR i IN 1..n LOOP
-            IF locked[i] AND NOT is_abs[i] AND i <> t_idx THEN
-                locked_sum := locked_sum + days[i];
-            END IF;
-        END LOOP;
-
-        room    := GREATEST(cap - locked_sum, 0);
-        granted := LEAST(t_req, room);
+        -- Not what the week already holds, not what else is in this same call,
+        -- not absence. Each project is measured against the week on its own, and
+        -- their sum is allowed to exceed it — that is an overbooked week, which
+        -- is a fact to report rather than a request to refuse. See the rule at
+        -- the top of this file.
+        --
+        -- This one line is what used to need a displacement loop underneath it.
+        -- `room` was the week minus everything already locked, so a grant could
+        -- overshoot and the loop then had to claw it back off whichever project
+        -- happened to be largest — a project the caller never named.
+        granted := LEAST(t_req, cap);
 
         IF is_abs[t_idx] THEN
             -- absence is registered in the absence calendar, not booked here
@@ -315,49 +361,15 @@ BEGIN
         locked[t_idx]     := true;
         was_target[t_idx] := true;
 
-        -- ---- displace: shave one day off the largest movable, then look again
+        -- Nothing follows. There is no displacement step any more: the grant
+        -- above is the whole rule, and what the week already held is none of its
+        -- business.
         --
-        -- `total` adds up the bookings and skips absence. That skip is the fix:
-        -- a week's worth of work has to fit in a week, but absence is not work
-        -- being planned and must not push aside work that already is.
-        --
-        -- Anna has 3 days ANE1006 and 2 days off. Book her 2 days of KUN1001:
-        --
-        --   counting absence  3 + 2 + 2 = 7, two over a 5-day week, so ANE1006 is
-        --                     shaved to 1 and saved that way. She cancels the 2
-        --                     days off and is on 3 of 5, with nothing left to say
-        --                     where the other 2 went.
-        --
-        --   bookings only     3 + 2 = 5, which fits, so ANE1006 keeps its 3. The
-        --                     grid still draws the week as full, because the
-        --                     absence is drawn over the top of it. She cancels,
-        --                     and the full week is simply there again.
-        LOOP
-            total := 0;
-            FOR i IN 1..n LOOP
-                IF NOT is_abs[i] THEN
-                    total := total + days[i];
-                END IF;
-            END LOOP;
-
-            over := total - cap;
-            EXIT WHEN over <= 0;
-
-            big_idx := 0;
-            big_val := 0;
-            FOR i IN 1..n LOOP
-                -- strict > means the FIRST maximum wins, and the arrays are
-                -- sorted by project code, so ties break lowest-code-first
-                IF NOT locked[i] AND days[i] > big_val THEN
-                    big_val := days[i];
-                    big_idx := i;
-                END IF;
-            END LOOP;
-
-            EXIT WHEN big_idx = 0;  -- nothing movable left to give
-
-            days[big_idx] := days[big_idx] - 1;
-        END LOOP;
+        -- What used to be here shaved one day at a time off the largest unlocked
+        -- allocation until the week fitted. It is gone because it could not know
+        -- which booking was the mistake — booking 5 days of KUN1001 onto a full
+        -- ANE1006 week emptied ANE1006 completely, and saved it that way. The
+        -- week is now allowed to be ten days long and to say so.
     END LOOP;
 
     -- ---- results ------------------------------------------------------------
@@ -403,6 +415,61 @@ BEGIN
     );
 END
 $$ LANGUAGE plpgsql IMMUTABLE;
+
+
+-- -----------------------------------------------------------------------------
+-- Write one project's week, on every weekday, holidays included.
+--
+-- upsert_staffing() in staffing_in_periods.sql goes through available_dates_new()
+-- and so writes four rows in a week holding 1. mai. That is right for the older
+-- per-project callers, which have no week and no capacity, and wrong here: a
+-- project row records what was planned, and a plan of five days has to survive
+-- being read back as five. Four rows read back as four, and the fifth day is
+-- gone with nothing anywhere remembering it — the same information loss the
+-- absence rule at the top of this file exists to avoid.
+--
+-- So the holiday is written like any other day and subtracted by the readers.
+-- Everything that turns staffing rows into HOURS therefore has to exclude
+-- holidays explicitly, because it can no longer rely on them being absent:
+-- weekly_forecasted_fg_json, staffed_billable_hours_for_employees and
+-- staffed_nonbillable_hours_for_employees all do.
+--
+-- Separate from upsert_staffing() rather than a change to it, so the older
+-- callers keep the behaviour they were written for.
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.upsert_weekly_staffing(
+    in_employee    integer,
+    in_project     text,
+    start_date     date,
+    end_date       date,
+    in_percentage  integer DEFAULT 100
+) RETURNS SETOF date
+AS $$
+BEGIN
+    -- The same guard insert_staffing() carries, and the reason this function may
+    -- not simply call it. Absence lives in its own table and is written only by
+    -- the fraværskalender and apply_company_absence().
+    IF EXISTS (SELECT 1 FROM absence_reasons WHERE id = in_project) THEN
+        RAISE EXCEPTION 'Cannot insert absence into the staffing table: "%"', in_project;
+    END IF;
+
+    DELETE FROM staffing
+    WHERE employee = in_employee
+      AND project  = in_project
+      AND date BETWEEN start_date AND end_date;
+
+    RETURN QUERY (
+        WITH new_staffing AS (
+            INSERT INTO staffing (employee, project, date, percentage)
+            SELECT in_employee, in_project, w.weekday_date, in_percentage
+            FROM weekday_dates(start_date, end_date) w
+            ON CONFLICT (employee, project, date) DO NOTHING
+            RETURNING date
+        )
+        SELECT date FROM new_staffing ORDER BY date
+    );
+END
+$$ LANGUAGE plpgsql;
 
 
 -- -----------------------------------------------------------------------------
@@ -460,9 +527,12 @@ BEGIN
                 hashtext('weekly_staffing:' || grp.employee || ':' || grp.week));
         END IF;
 
+        -- The length of the week, NOT its workable days. A holiday does not
+        -- shorten the plan; it is subtracted by the readers and by the person
+        -- row. See upsert_weekly_staffing() above.
         SELECT COUNT(*)::integer
         INTO cap
-        FROM available_dates_new(week_start, (week_start + 4)::date);
+        FROM weekday_dates(week_start, (week_start + 4)::date);
 
         -- Current state in whole days. Absence days are counted the same way
         -- get_weekly_staffing_json reports them (one row = one whole day), so
@@ -525,8 +595,8 @@ BEGIN
 
                 IF (alloc->>'days')::integer > 0 AND cap > 0 THEN
                     pct := ROUND((alloc->>'days')::integer * 100.0 / cap)::integer;
-                    PERFORM upsert_staffing(grp.employee, alloc->>'project',
-                                            week_start, (week_start + 4)::date, pct);
+                    PERFORM upsert_weekly_staffing(grp.employee, alloc->>'project',
+                                                   week_start, (week_start + 4)::date, pct);
                 ELSE
                     PERFORM remove_staffing(grp.employee, alloc->>'project',
                                             week_start, (week_start + 4)::date);
@@ -554,10 +624,10 @@ BEGIN
             'restore',  pre_state));
 
         -- A week that got SOME of what it asked for is a save, not a refusal.
-        -- Asking for 5 days in a week that only holds 4 produces a shortfall,
-        -- and counting that as refused made a batch that filled every cell
-        -- report "nothing saved". The shortfall is still reported per project
-        -- in `refused`, which is where the detail belongs.
+        -- Asking for more than is left in the week produces a shortfall, and
+        -- counting that as refused made a batch that filled every cell report
+        -- "nothing saved". The shortfall is still reported per project in
+        -- `refused`, which is where the detail belongs.
         IF jsonb_array_length(plan->'refused') > 0
            AND NOT EXISTS (
                SELECT 1
@@ -642,9 +712,12 @@ BEGIN
             CONTINUE;
         END IF;
 
+        -- The length of the week, NOT its workable days. A holiday does not
+        -- shorten the plan; it is subtracted by the readers and by the person
+        -- row. See upsert_weekly_staffing() above.
         SELECT COUNT(*)::integer
         INTO cap
-        FROM available_dates_new(week_start, (week_start + 4)::date);
+        FROM weekday_dates(week_start, (week_start + 4)::date);
 
         -- anything there now that the snapshot does not mention has to go
         FOR entry IN SELECT e.value FROM jsonb_array_elements(actual) e
@@ -662,8 +735,8 @@ BEGIN
         LOOP
             IF (entry->>'days')::integer > 0 AND cap > 0 THEN
                 pct := ROUND((entry->>'days')::integer * 100.0 / cap)::integer;
-                PERFORM upsert_staffing(emp, entry->>'project',
-                                        week_start, (week_start + 4)::date, pct);
+                PERFORM upsert_weekly_staffing(emp, entry->>'project',
+                                               week_start, (week_start + 4)::date, pct);
             ELSE
                 PERFORM remove_staffing(emp, entry->>'project',
                                         week_start, (week_start + 4)::date);
@@ -730,7 +803,7 @@ BEGIN
                s.wk,
                s.d + COALESCE(w.d, 0) AS booked,
                (SELECT COUNT(*)::integer
-                  FROM available_dates_new(s.wk_start, (s.wk_start + 4)::date)) AS cap
+                  FROM weekday_dates(s.wk_start, (s.wk_start + 4)::date)) AS cap
         FROM staffed s
         LEFT JOIN away w ON w.emp = s.emp AND w.wk = s.wk
     )

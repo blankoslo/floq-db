@@ -120,12 +120,44 @@ CREATE OR REPLACE FUNCTION public.staffed_billable_hours_for_employees(start_dat
 AS $function$
 begin
   return query (
-    select s.employee, sum(s.percentage) * 7.5 / 100.0
-    from staffing s, projects p
-    where s.project = p.id
-    and s.date between start_date and end_date
-    and p.billable = 'billable'
-    group by s.employee
+    -- A plan can be longer than the range can hold, in two ways that both have
+    -- to stop here. A staffing row now sits on public holidays — the plan
+    -- records its own length, and upsert_weekly_staffing() writes a project's
+    -- week on every weekday so it reads back at that length — and a range can
+    -- simply be overbooked. Neither becomes hours anybody works.
+    --
+    -- So the plan is capped at the workable days in the range, and the billable
+    -- SHARE of it is what survives: a range planned three billable to two
+    -- other still reads three-to-two after the cap bites. A plan that already
+    -- fits is untouched, and reports exactly what it did before.
+    --
+    -- Dropping the holiday rows instead would be wrong for a PARTIAL plan. The
+    -- percentage is spread evenly across the week, so three days in a week
+    -- holding 1. mai is five rows of 60%, and filtering one away leaves 18
+    -- hours where the plan is three days — 22,5. floq-reports-api divides this
+    -- by holiday-aware available_hours for staffingRatio and the in_project
+    -- KPI, and personFg.ts in floq-staffing-v3 caps the same way.
+    with workable as (
+      select count(*)::numeric as days from available_dates_new(start_date, end_date)
+    ),
+    planned as (
+      select s.employee as emp,
+             sum(s.percentage)::numeric / 100.0 as days,
+             sum(case when p.billable = 'billable' then s.percentage else 0 end)::numeric / 100.0
+               as kind_days
+      from staffing s, projects p
+      where s.project = p.id
+      and s.date between start_date and end_date
+      group by s.employee
+    )
+    select pl.emp,
+           case when pl.days > 0
+                then least(pl.days, w.days) * pl.kind_days / pl.days * 7.5
+                else 0::numeric
+           end
+    from planned pl
+    cross join workable w
+    where pl.kind_days > 0
   );
 end
 $function$;
@@ -137,12 +169,44 @@ CREATE OR REPLACE FUNCTION public.staffed_nonbillable_hours_for_employees(start_
 AS $function$
 begin
   return query (
-    select s.employee, sum(s.percentage) * 7.5 / 100.0
-    from staffing s, projects p
-    where s.project = p.id
-    and s.date between start_date and end_date
-    and p.billable = 'nonbillable'
-    group by s.employee
+    -- A plan can be longer than the range can hold, in two ways that both have
+    -- to stop here. A staffing row now sits on public holidays — the plan
+    -- records its own length, and upsert_weekly_staffing() writes a project's
+    -- week on every weekday so it reads back at that length — and a range can
+    -- simply be overbooked. Neither becomes hours anybody works.
+    --
+    -- So the plan is capped at the workable days in the range, and the nonbillable
+    -- SHARE of it is what survives: a range planned three nonbillable to two
+    -- other still reads three-to-two after the cap bites. A plan that already
+    -- fits is untouched, and reports exactly what it did before.
+    --
+    -- Dropping the holiday rows instead would be wrong for a PARTIAL plan. The
+    -- percentage is spread evenly across the week, so three days in a week
+    -- holding 1. mai is five rows of 60%, and filtering one away leaves 18
+    -- hours where the plan is three days — 22,5. floq-reports-api divides this
+    -- by holiday-aware available_hours for staffingRatio and the in_project
+    -- KPI, and personFg.ts in floq-staffing-v3 caps the same way.
+    with workable as (
+      select count(*)::numeric as days from available_dates_new(start_date, end_date)
+    ),
+    planned as (
+      select s.employee as emp,
+             sum(s.percentage)::numeric / 100.0 as days,
+             sum(case when p.billable = 'nonbillable' then s.percentage else 0 end)::numeric / 100.0
+               as kind_days
+      from staffing s, projects p
+      where s.project = p.id
+      and s.date between start_date and end_date
+      group by s.employee
+    )
+    select pl.emp,
+           case when pl.days > 0
+                then least(pl.days, w.days) * pl.kind_days / pl.days * 7.5
+                else 0::numeric
+           end
+    from planned pl
+    cross join workable w
+    where pl.kind_days > 0
   );
 end
 $function$;
