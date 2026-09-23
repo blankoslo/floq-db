@@ -139,3 +139,5 @@ FROM
   );
 END
 $$ LANGUAGE plpgsql;
+
+COMMIT;
