@@ -7,12 +7,12 @@ BEGIN
         RAISE EXCEPTION 'the candidate event kinds are missing';
     END IF;
 
-    IF (
+    IF NOT (
         SELECT array_agg(column_name::TEXT ORDER BY column_name)
         FROM information_schema.columns
         WHERE table_schema = 'public'
           AND table_name = 'sales_candidate'
-    ) <> ARRAY['case_id', 'created_at', 'created_by', 'person_id'] THEN
+    ) @> ARRAY['case_id', 'created_at', 'created_by', 'person_id'] THEN
         RAISE EXCEPTION 'sales_candidate columns do not match the expected contract';
     END IF;
 
