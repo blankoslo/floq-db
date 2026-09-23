@@ -11,17 +11,7 @@ SELECT
     SUM(CASE WHEN staff.billable = 'billable' :: time_status THEN 1 ELSE 0 END) * 7.5 AS billable_hours,
     SUM(CASE WHEN staff.billable = 'nonbillable' :: time_status THEN 1 ELSE 0 END) * 7.5 AS nonbillable_hours,
     SUM(CASE WHEN staff.billable = 'unavailable' :: time_status THEN 1 ELSE 0 END) * 7.5 AS unavailable_hours
-  -- NOT is_holiday: staffing rows can now land on a public holiday, because
-  -- upsert_weekly_staffing() writes a project's week on every weekday so the
-  -- plan reads back at the length it was made. They are intent, not hours, and
-  -- available_hours above excludes holidays.
-  --
-  -- The coarse version of the fix, deliberately. This function counts ROWS and
-  -- ignores `percentage` altogether, so a 60 % day already counts as a whole
-  -- one and a partial plan was never accurate here. weekly_forecasted_fg_json
-  -- and staffed_billable_hours_for_employees cap the plan per employee instead,
-  -- which is right. The only caller of this path is floq-kpi, which is retired,
-  -- so this is insurance against it being revived rather than a live fix.
+  -- Staffing rows on holidays are planned intent, not hours.
   FROM (SELECT * FROM staffing
     JOIN projects ON (staffing.project = projects.id)
     WHERE staffing.date BETWEEN from_date AND to_date

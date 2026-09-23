@@ -2,9 +2,6 @@ CREATE OR REPLACE FUNCTION public.get_weekly_staffing_json (start_date date, end
 	RETURNS jsonb
 	LANGUAGE plpgsql
 	STRICT
-	-- STABLE because this only reads. The apps call it over GET, which
-	-- PostgREST is entitled to reject for a VOLATILE function; it happens to
-	-- allow it today, so this is here before an upgrade turns it into a 405.
 	STABLE
 	AS $function$
 DECLARE

@@ -90,20 +90,6 @@ END
 $$ LANGUAGE plpgsql;
 
 -- Every Monday-to-Friday date in the range, holidays included.
---
--- The sibling of available_dates_new(), and the difference is the whole point:
--- that one answers "which days can actually be worked", this one answers "how
--- long is the week on paper". Both are needed, because a project row and a
--- person row measure against different things.
---
--- A project row is intent. Staffing Anna on ANE1006 for the week means five
--- days, and 1. mai landing on the Friday does not make the plan four days long
--- — it makes one of the five not happen. The person row is where that is
--- subtracted, from availability_percentage(), which stays on
--- available_dates_new() precisely so the two axes do not collapse into one.
---
--- Use available_dates_new() for anything counting real capacity or real hours.
--- Use this only for the length of a planning week.
 CREATE OR REPLACE FUNCTION public.weekday_dates(start_date date, end_date date)
 RETURNS TABLE(weekday_date date) AS
 $$
@@ -205,5 +191,4 @@ BEGIN
     END LOOP;
     RETURN result;
 END
--- STABLE because this only reads; the apps call it over GET.
 $$ LANGUAGE plpgsql STABLE;
