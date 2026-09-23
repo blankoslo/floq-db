@@ -53,7 +53,7 @@ BEGIN
         RETURN NULL;
     END IF;
 
-    SELECT coalesce(p.internal_name, p.name)
+    SELECT coalesce(nullif(btrim(p.internal_name), ''), p.name)
     INTO project_name
     FROM projects p
     WHERE p.id = link.project_id;
