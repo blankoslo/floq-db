@@ -129,3 +129,5 @@ add_sales_candidate [add_person_board] 2026-09-22T21:35:00Z Zaim Imran <zaim.imr
 add_sales_candidate_awarded [add_sales_candidate] 2026-09-23T09:00:00Z Zaim Imran <zaim.imran@gmail.com> # Record which candidate got the job on a sales case
 add_sales_case_project [add_sales_candidate] 2026-09-23T09:10:00Z Zaim Imran <zaim.imran@gmail.com> # Link time codes to a sales case
 reorder_person_tracks [add_sales_candidate] 2026-09-23T09:20:00Z Zaim Imran <zaim.imran@gmail.com> # Put I arbeid last on the person board
+add_salg_role [add_person_board] 2026-09-23T12:00:00Z Zaim Imran <zaim.imran@gmail.com> # Add a salg role to employee_role
+restrict_person_board_to_salg [add_salg_role add_sales_candidate_awarded reorder_person_tracks] 2026-09-23T12:10:00Z Zaim Imran <zaim.imran@gmail.com> # Only the salg role reads the person board and candidate matches
