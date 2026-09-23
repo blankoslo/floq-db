@@ -1,26 +1,6 @@
--- =============================================================================
--- Tests for plan_weekly_staffing().
---
--- Run against any database that has weekly_staffing_write.sql loaded:
+-- Tests for plan_weekly_staffing(). Run against a database with weekly_staffing_write.sql loaded:
 --     psql -d floq -f functions/tests/plan_weekly_staffing_test.sql
---
 -- NOT deployed: functions/deploy.sh globs functions/*.sql and does not recurse.
---
--- plan_weekly_staffing is IMMUTABLE and takes/returns jsonb, so every case here
--- is a single assertion with no fixtures and no tables.
---
--- A normal week holds 5 days of WORK. Absence does not come out of that budget
--- and does not refuse anything — it is recorded on top, and reported back in
--- `absence` as the days of the plan that are not going to happen. So a week can
--- legitimately end up holding 5 booked days plus 2 days of ferie: the plan
--- stays whole, and cancelling the ferie leaves a full week rather than a hole.
--- `hidden_days` is the arithmetic the grid draws with — planned days minus the
--- days left over after absence.
---
--- Project codes are chosen so alphabetical order is obvious:
---   ANE1006 < KUN1001 < ZZZ9999.  Ties in "shave the largest" break by code
---   ascending, so ANE1006 gives way before KUN1001 when both are equal.
--- =============================================================================
 
 -- ---- helpers (session-local, vanish on disconnect) --------------------------
 CREATE OR REPLACE FUNCTION pg_temp.days_of(plan jsonb, proj text) RETURNS integer AS $$
@@ -61,7 +41,6 @@ CREATE OR REPLACE FUNCTION pg_temp.blocked_by(plan jsonb, proj text) RETURNS jso
           WHERE e.value->>'project' = proj);
 $$ LANGUAGE sql;
 
--- ---- the `absence` block: what the week really holds -------------------------
 CREATE OR REPLACE FUNCTION pg_temp.away_days(plan jsonb) RETURNS integer AS $$
   SELECT (plan->'absence'->>'days')::integer;
 $$ LANGUAGE sql;
@@ -84,17 +63,11 @@ CREATE OR REPLACE FUNCTION pg_temp.booked_days(plan jsonb) RETURNS integer AS $$
   WHERE NOT COALESCE((e.value->>'absence')::boolean, false);
 $$ LANGUAGE sql;
 
-
 DO $test$
 DECLARE
   p jsonb;
 BEGIN
-  -- ===========================================================================
-  -- Ordinary booking. NOTHING DISPLACES ANYTHING.
-  -- ===========================================================================
-  -- Every booking is granted what it asked for, capped at the length of the
-  -- week and measured against nothing else. Their sum may exceed the week, and
-  -- a week whose sum exceeds it is overbooked — a state, not a refusal.
+  -- ---- ordinary booking: nothing displaces anything ----
 
   -- 1. empty week, book 3 days
   p := plan_weekly_staffing(
@@ -104,9 +77,7 @@ BEGIN
   ASSERT pg_temp.n_displaced(p) = 0,       '1: nothing should be displaced';
   ASSERT pg_temp.n_refused(p)   = 0,       '1: nothing should be refused';
 
-  -- 2. full on A, book 3 on B -> A KEEPS ALL FIVE and the week is 8 days long.
-  --    The old rule shaved A to 2. It could not know which of the two bookings
-  --    was the mistake, and it saved its guess.
+  -- 2. full on A, book 3 on B -> A keeps all five, the week is 8 days
   p := plan_weekly_staffing(
          '[{"project":"ANE1006","days":5,"absence":false}]'::jsonb,
          '[{"project":"KUN1001","days":3,"absence":false}]'::jsonb, 5);
@@ -117,8 +88,7 @@ BEGIN
   ASSERT pg_temp.n_displaced(p) = 0,       '2: and nothing displaced';
   ASSERT pg_temp.booked_days(p) = 8,       '2: the week is 8 days long and says so';
 
-  -- 3. a week that is already over (4+3 = 7) is not tidied up by booking into
-  --    it. The new day is added and the two incumbents are not touched.
+  -- 3. booking into an already overbooked week (4+3) leaves the incumbents alone
   p := plan_weekly_staffing(
          '[{"project":"ANE1006","days":4,"absence":false},
            {"project":"KUN1001","days":3,"absence":false}]'::jsonb,
@@ -129,9 +99,7 @@ BEGIN
   ASSERT pg_temp.n_refused(p) = 0,         '3: nothing refused';
   ASSERT pg_temp.n_displaced(p) = 0,       '3: and a booking never repairs a week';
 
-  -- 4. absence sits over a week that the work has already overfilled.
-  --    1 sick + 2 A + 2 C, book 3 B. Nothing gives way: the week holds 7 days of
-  --    work with a sick day over the top, and 4 of those days will not happen.
+  -- 4. absence over a week the work already overfills: 1 sick + 2 A + 2 C, book 3 B
   p := plan_weekly_staffing(
          '[{"project":"SYK1001","days":1,"absence":true},
            {"project":"ANE1006","days":2,"absence":false},
@@ -146,8 +114,7 @@ BEGIN
                                       || pg_temp.hidden_days(p);
   ASSERT pg_temp.away_protected(p), '4: sykemelding is protected';
 
-  -- 5. a full week booked on top of a full week. NOTHING is drained — this is
-  --    the case the old rule was worst at, emptying two projects nobody named.
+  -- 5. a full week booked on top of a full week
   p := plan_weekly_staffing(
          '[{"project":"ANE1006","days":3,"absence":false},
            {"project":"ZZZ9999","days":2,"absence":false}]'::jsonb,
@@ -158,14 +125,9 @@ BEGIN
   ASSERT pg_temp.n_refused(p) = 0,         '5: nothing refused';
   ASSERT pg_temp.booked_days(p) = 10,      '5: ten days, and the grid says so';
 
-  -- ===========================================================================
-  -- Absence is never displaced, and never displaces
-  -- ===========================================================================
-  -- It is not taken from, it is not written, and it does not reduce anybody's
-  -- plan. All it does is get reported.
+  -- ---- absence is never displaced, and never displaces ----
 
-  -- 6. 4 days ferie does NOT stop 3 days being planned. The week keeps the ask;
-  --    2 of those days will not happen, and that is what `hidden_days` says.
+  -- 6. 4 days ferie does not stop 3 days being planned
   p := plan_weekly_staffing(
          '[{"project":"FER1000","days":4,"absence":true}]'::jsonb,
          '[{"project":"ANE1006","days":3,"absence":false}]'::jsonb, 5);
@@ -179,8 +141,7 @@ BEGIN
   ASSERT pg_temp.away_kinds(p) = '["FER1000"]'::jsonb, '6: should name ferie';
   ASSERT pg_temp.away_protected(p),         '6: ferie is protected';
 
-  -- 7. a full week of ferie still records the plan. Nothing of it will happen,
-  --    and cancelling the ferie is what makes it happen.
+  -- 7. a full week of ferie still records the plan
   p := plan_weekly_staffing(
          '[{"project":"FER1000","days":5,"absence":true}]'::jsonb,
          '[{"project":"ANE1006","days":3,"absence":false}]'::jsonb, 5);
@@ -189,11 +150,7 @@ BEGIN
   ASSERT pg_temp.n_refused(p)   = 0,       '7: and not refused';
   ASSERT pg_temp.hidden_days(p) = 3,       '7: none of it will happen';
 
-  -- 8. THE CASE THIS ALL EXISTS FOR: 2 ferie + 3 A, book 3 on B.
-  --    A and B are 6 days of work in a 5-day week. Neither gives way, and the
-  --    ferie takes nothing either — it is reported in hidden_days instead. Under
-  --    the oldest rule the ferie pushed A all the way to 0 and saved it, so
-  --    cancelling the ferie left A on nothing.
+  -- 8. 2 ferie + 3 A, book 3 on B
   p := plan_weekly_staffing(
          '[{"project":"FER1000","days":2,"absence":true},
            {"project":"ANE1006","days":3,"absence":false}]'::jsonb,
@@ -208,8 +165,7 @@ BEGIN
   ASSERT pg_temp.hidden_days(p) = 3,       '8: only 3 days are left, so 3 will not happen, got '
                                            || pg_temp.hidden_days(p);
 
-  -- 9. same again but booking 2 instead of 3 -> the work fits, so A keeps all 3
-  --    and nothing is displaced at all
+  -- 9. same, booking 2 instead of 3
   p := plan_weekly_staffing(
          '[{"project":"FER1000","days":2,"absence":true},
            {"project":"ANE1006","days":3,"absence":false}]'::jsonb,
@@ -221,8 +177,7 @@ BEGIN
   ASSERT pg_temp.n_displaced(p) = 0,       '9: NOTHING should be displaced';
   ASSERT pg_temp.hidden_days(p) = 2,       '9: 2 planned days are ferie';
 
-  -- 10. absence present and the work exactly fills the week: nothing moves, and
-  --     the total legitimately exceeds capacity because the ferie is on top
+  -- 10. absence present and the work exactly fills the week
   p := plan_weekly_staffing(
          '[{"project":"FER1000","days":2,"absence":true},
            {"project":"ANE1006","days":2,"absence":false},
@@ -246,8 +201,7 @@ BEGIN
   ASSERT pg_temp.hidden_days(p) = 1,       '11: 3 days are free, so 1 is hidden';
   ASSERT NOT pg_temp.away_protected(p),    '11: avspasering is not protected';
 
-  -- 12. protected wins the flag when both kinds are present, so a caller can
-  --     still tell "she is away" from "she might yet come"
+  -- 12. protected wins the flag when both kinds are present
   p := plan_weekly_staffing(
          '[{"project":"AVS","days":1,"absence":true},
            {"project":"FER1000","days":3,"absence":true}]'::jsonb,
@@ -258,13 +212,9 @@ BEGIN
   ASSERT pg_temp.away_kinds(p) @> '["AVS"]'::jsonb
      AND pg_temp.away_kinds(p) @> '["FER1000"]'::jsonb, '12: both kinds named';
 
-  -- ===========================================================================
-  -- Fagutvikling, specifically (it is absence in the database, and the old app
-  -- left it out of its hardcoded list)
-  -- ===========================================================================
+  -- ---- fagutvikling (absence in the database) ----
 
-  -- 13. fits alongside with nothing hidden: 2 fagdager plus 3 days of work is
-  --     exactly a week, so the whole plan happens
+  -- 13. 2 fagdager plus 3 days of work is exactly a week
   p := plan_weekly_staffing(
          '[{"project":"FAG1000","days":2,"absence":true}]'::jsonb,
          '[{"project":"KUN1001","days":3,"absence":false}]'::jsonb, 5);
@@ -285,8 +235,7 @@ BEGIN
   ASSERT pg_temp.n_displaced(p) = 0,       '14: nothing displaced';
   ASSERT pg_temp.hidden_days(p) = 2,       '14: 2 of the 5 planned days are fagdager';
 
-  -- 15. a full week of fagutvikling refuses nothing either — the booking is
-  --     recorded and reported as entirely hidden
+  -- 15. a full week of fagutvikling refuses nothing
   p := plan_weekly_staffing(
          '[{"project":"FAG1000","days":5,"absence":true}]'::jsonb,
          '[{"project":"KUN1001","days":3,"absence":false}]'::jsonb, 5);
@@ -296,8 +245,7 @@ BEGIN
   ASSERT pg_temp.hidden_days(p) = 3,       '15: none of it happens';
   ASSERT NOT pg_temp.away_protected(p),    '15: fagutvikling is not protected';
 
-  -- 16. booking fagutvikling itself from the grid is refused, not thrown --
-  --     so the rest of a batch still saves
+  -- 16. booking fagutvikling from the grid is refused, not thrown
   p := plan_weekly_staffing(
          '[{"project":"ANE1006","days":2,"absence":false}]'::jsonb,
          '[{"project":"FAG1000","days":3,"absence":true}]'::jsonb, 5);
@@ -311,9 +259,7 @@ BEGIN
          '[{"project":"FER1000","days":3,"absence":true}]'::jsonb, 5);
   ASSERT pg_temp.reason_of(p,'FER1000') = 'absence_not_writable', '17: wrong reason';
 
-  -- ===========================================================================
-  -- Capacity edges
-  -- ===========================================================================
+  -- ---- capacity edges ----
 
   -- 18. more than a week
   p := plan_weekly_staffing(
@@ -324,9 +270,6 @@ BEGIN
   ASSERT pg_temp.reason_of(p,'ANE1006')    = 'exceeds_week_capacity', '18: wrong reason';
 
   -- 19. a caller passing a shorter week
-  --     The planner takes capacity as an argument and asks no questions about
-  --     it. apply_weekly_staffing() now always passes 5 — a holiday does not
-  --     shorten a plan — but the rule itself still holds for any capacity.
   p := plan_weekly_staffing(
          '[]'::jsonb,
          '[{"project":"ANE1006","days":5,"absence":false}]'::jsonb, 4);
@@ -340,9 +283,7 @@ BEGIN
   ASSERT pg_temp.days_of(p,'ANE1006')   = 0, '20: nothing booked';
   ASSERT pg_temp.reason_of(p,'ANE1006') = 'no_workable_days', '20: wrong reason';
 
-  -- ===========================================================================
-  -- Clearing, self-targeting, idempotence
-  -- ===========================================================================
+  -- ---- clearing, self-targeting, idempotence ----
 
   -- 21. booking 0 clears that project and leaves the rest alone
   p := plan_weekly_staffing(
@@ -353,8 +294,7 @@ BEGIN
   ASSERT pg_temp.days_of(p,'KUN1001') = 2, '21: the other project is untouched';
   ASSERT pg_temp.n_refused(p) = 0,         '21: clearing is never refused';
 
-  -- 22. raising a project that is already there: its own days are not treated
-  --     as something to displace
+  -- 22. raising a project that is already there
   p := plan_weekly_staffing(
          '[{"project":"ANE1006","days":2,"absence":false}]'::jsonb,
          '[{"project":"ANE1006","days":4,"absence":false}]'::jsonb, 5);
@@ -382,15 +322,9 @@ BEGIN
                                            || pg_temp.days_of(p,'ZZZ9999');
   ASSERT pg_temp.booked_days(p) = 9,       '24: two targets in one call do not share the week either';
 
-  -- ===========================================================================
-  -- The plan survives the absence
-  -- ===========================================================================
-  -- The reason for all of the above. Absence arrives, absence leaves, and what
-  -- somebody planned is still there either side of it.
+  -- ---- the plan survives the absence ----
 
-  -- 25. absence appears on a full week and NOTHING is rewritten. There are no
-  --     targets at all here, which is the state a dry run reports for a week
-  --     somebody is merely looking at.
+  -- 25. absence on a full week with no targets: nothing is rewritten
   p := plan_weekly_staffing(
          '[{"project":"FER1000","days":2,"absence":true},
            {"project":"ANE1006","days":5,"absence":false}]'::jsonb,
@@ -400,9 +334,7 @@ BEGIN
   ASSERT pg_temp.n_displaced(p) = 0,       '25: and nothing displaced';
   ASSERT pg_temp.hidden_days(p) = 2,       '25: 2 of the 5 days are ferie';
 
-  -- 26. Knut staffs a full week into one that is already 2 days absent. All 5
-  --     are recorded, because 5 is what he asked for and it is the only version
-  --     that is still right if she cancels those 2 days.
+  -- 26. a full week staffed into one that is already 2 days absent
   p := plan_weekly_staffing(
          '[{"project":"FER1000","days":2,"absence":true}]'::jsonb,
          '[{"project":"ANE1006","days":5,"absence":false}]'::jsonb, 5);
@@ -412,8 +344,7 @@ BEGIN
   ASSERT pg_temp.away_days(p)   = 2,       '26: 2 days away';
   ASSERT pg_temp.hidden_days(p) = 2,       '26: so 2 of the 5 will not happen';
 
-  -- 27. ...and the absence being cancelled needs no repair: the same plan with
-  --     no absence in it is a full week, with nothing hidden
+  -- 27. the same plan with the absence cancelled
   p := plan_weekly_staffing(
          '[{"project":"ANE1006","days":5,"absence":false}]'::jsonb,
          '[]'::jsonb, 5);
@@ -421,8 +352,7 @@ BEGIN
   ASSERT pg_temp.hidden_days(p) = 0,       '27: nothing hidden any more';
   ASSERT pg_temp.away_days(p)   = 0,       '27: nobody is away';
 
-  -- 28. what absence still does NOT do is buy extra room. A week is 5 days of
-  --     work whoever is away, so 6 is still one too many.
+  -- 28. absence does not buy extra room: 6 is still one too many
   p := plan_weekly_staffing(
          '[{"project":"FER1000","days":2,"absence":true}]'::jsonb,
          '[{"project":"ANE1006","days":6,"absence":false}]'::jsonb, 5);
@@ -434,16 +364,9 @@ BEGIN
   ASSERT pg_temp.blocked_by(p,'ANE1006') = '[]'::jsonb,
          '28: a refusal must not name absence as its cause';
 
-  -- ===========================================================================
-  -- Overbooking: the sum of a week is allowed past the week
-  --
-  -- These are the cases the rule was changed for. INT1000 is nonbillable and
-  -- ANE1006/KUN1001 are not, and that makes NO difference to any of them —
-  -- `billable` is not an input any more.
-  -- ===========================================================================
+  -- ---- overbooking: the sum of a week may exceed the week ----
 
-  -- 29. THE RULE. Two client projects, a full week each. 37,5 t + 37,5 t is
-  --     75 t, and the grid prints 75.
+  -- 29. two client projects, a full week each
   p := plan_weekly_staffing(
          '[{"project":"ANE1006","days":5,"absence":false}]'::jsonb,
          '[{"project":"KUN1001","days":5,"absence":false}]'::jsonb, 5);
@@ -454,7 +377,7 @@ BEGIN
   ASSERT pg_temp.n_displaced(p) = 0,       '29: nothing displaced';
   ASSERT pg_temp.n_refused(p)   = 0,       '29: nothing refused';
 
-  -- 30. an internal code behaves identically — one rule, not two budgets
+  -- 30. an internal code behaves identically
   p := plan_weekly_staffing(
          '[{"project":"ANE1006","days":5,"absence":false}]'::jsonb,
          '[{"project":"INT1000","days":1,"absence":false}]'::jsonb, 5);
@@ -462,16 +385,14 @@ BEGIN
   ASSERT pg_temp.days_of(p,'INT1000') = 1, '30: the internal day is granted';
   ASSERT pg_temp.booked_days(p) = 6,       '30: 6 of 5';
 
-  -- 31. and in the other order, which the two-budget version made asymmetric
+  -- 31. and in the other order
   p := plan_weekly_staffing(
          '[{"project":"INT1000","days":5,"absence":false}]'::jsonb,
          '[{"project":"ANE1006","days":5,"absence":false}]'::jsonb, 5);
   ASSERT pg_temp.days_of(p,'INT1000') = 5, '31: INT1000 untouched';
   ASSERT pg_temp.days_of(p,'ANE1006') = 5, '31: ANE1006 gets its full week';
 
-  -- 32. ONE PROJECT IS STILL CAPPED AT THE WEEK. This is the only thing
-  --     `exceeds_week_capacity` means now: not "the week is full", but "you
-  --     asked for more days than a week has".
+  -- 32. one project is still capped at the week
   p := plan_weekly_staffing(
          '[{"project":"KUN1001","days":5,"absence":false}]'::jsonb,
          '[{"project":"ANE1006","days":7,"absence":false}]'::jsonb, 5);
@@ -483,14 +404,13 @@ BEGIN
          || COALESCE(pg_temp.reason_of(p,'ANE1006'), 'null');
   ASSERT pg_temp.days_of(p,'KUN1001') = 5, '32: and the clipping costs KUN1001 nothing';
 
-  -- 33. the week being full is NOT a refusal. Same shape as 32, asked for 5.
+  -- 33. the week being full is not a refusal (as 32, asking for 5)
   p := plan_weekly_staffing(
          '[{"project":"KUN1001","days":5,"absence":false}]'::jsonb,
          '[{"project":"ANE1006","days":5,"absence":false}]'::jsonb, 5);
   ASSERT pg_temp.n_refused(p) = 0, '33: a full week refuses nothing';
 
-  -- 34. absence still takes days off what will HAPPEN, and still takes none off
-  --     what is stored — the one rule that did not change.
+  -- 34. absence on an overbooked week
   p := plan_weekly_staffing(
          '[{"project":"FER1000","days":3,"absence":true},
            {"project":"ANE1006","days":5,"absence":false}]'::jsonb,
@@ -502,8 +422,7 @@ BEGIN
   ASSERT pg_temp.hidden_days(p) = 8,       '34: 10 days planned, 2 left, so 8 will not happen, got '
                                            || pg_temp.hidden_days(p);
 
-  -- 35. `displaced` is now always empty, whatever is thrown at it. The field
-  --     stays so an older client keeps rendering; this is what holds it empty.
+  -- 35. `displaced` is always empty (kept so older clients still render)
   p := plan_weekly_staffing(
          '[{"project":"ANE1006","days":5,"absence":false},
            {"project":"ZZZ9999","days":5,"absence":false}]'::jsonb,

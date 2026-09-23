@@ -1,14 +1,8 @@
--- =============================================================================
 -- Integration tests for apply_company_absence() and restore_company_absence().
 --
 --     psql -d floq -f functions/tests/company_absence_test.sql
 --
 -- NOT deployed: functions/deploy.sh globs functions/*.sql and does not recurse.
---
--- SAFE TO RUN ANYWHERE. Everything happens inside a transaction that is rolled
--- back at the end, and it borrows existing employees rather than inventing them.
--- The week used is in 2099, so it is certainly empty.
--- =============================================================================
 
 BEGIN;
 
@@ -38,9 +32,7 @@ BEGIN
     AND date BETWEEN monday AND (monday + 6)::date;
   DELETE FROM holidays WHERE "date" BETWEEN monday AND (monday + 6)::date;
 
-  -- ===========================================================================
   -- 1. the ordinary case: everybody gets the day
-  -- ===========================================================================
   res := apply_company_absence('FAG1000', ARRAY[tuesday], ARRAY[e1, e2, e3]);
 
   ASSERT (res->>'booked')::int = 3, '1: three people booked, got ' || (res->>'booked');
@@ -50,9 +42,7 @@ BEGIN
    WHERE reason = 'FAG1000' AND date = tuesday AND employee_id IN (e1, e2, e3);
   ASSERT n = 3, '1: three rows should exist, found ' || n;
 
-  -- ===========================================================================
   -- 2. running it again creates nothing and offers nothing to undo
-  -- ===========================================================================
   res := apply_company_absence('FAG1000', ARRAY[tuesday], ARRAY[e1, e2, e3]);
 
   ASSERT (res->>'booked')::int = 0, '2: nothing new to create';
@@ -61,9 +51,7 @@ BEGIN
            WHERE p.value->>'status' = 'already_booked') = 3,
          '2: all three reported as already booked';
 
-  -- ===========================================================================
   -- 3. somebody already away that day is skipped and named
-  -- ===========================================================================
   DELETE FROM absence WHERE employee_id IN (e1, e2, e3)
     AND date BETWEEN monday AND (monday + 6)::date;
   INSERT INTO absence (employee_id, date, reason) VALUES (e2, tuesday, 'FER1000');
@@ -78,9 +66,7 @@ BEGIN
                       WHERE employee_id = e2 AND date = tuesday AND reason = 'FAG1000'),
          '3: AND NO FAGDAG WAS WRITTEN ON TOP OF THE FERIE';
 
-  -- ===========================================================================
   -- 4. undo removes what this batch made, and only that
-  -- ===========================================================================
   -- e1 keeps a fagdag they had before the batch; e3 got theirs from it.
   DELETE FROM absence WHERE employee_id IN (e1, e2, e3)
     AND date BETWEEN monday AND (monday + 6)::date;
@@ -104,14 +90,11 @@ BEGIN
                       WHERE employee_id = e3 AND date = tuesday),
          '4: the row this batch created is gone';
 
-  -- undoing twice is not an error, it is a week somebody else has changed
   res := restore_company_absence(undo);
   ASSERT (res->>'removed')::int = 0 AND (res->>'skipped')::int = 1,
          '4: a second undo removes nothing and says so';
 
-  -- ===========================================================================
   -- 5. a holiday and a weekend are refused as values, before anything is written
-  -- ===========================================================================
   DELETE FROM absence WHERE employee_id IN (e1, e2, e3)
     AND date BETWEEN monday AND (monday + 6)::date;
   INSERT INTO holidays ("date", "name") VALUES (monday, 'Testfridag');
@@ -123,7 +106,6 @@ BEGIN
   res := apply_company_absence('FAG1000', ARRAY[saturday], ARRAY[e1, e2, e3]);
   ASSERT res->>'refused' = 'not_a_working_day', '5: so is a Saturday';
 
-  -- one bad date refuses the whole batch rather than half-writing it
   res := apply_company_absence('FAG1000', ARRAY[tuesday, monday], ARRAY[e1, e2, e3]);
   ASSERT res->>'refused' = 'not_a_working_day', '5: the batch is refused as a whole';
   SELECT COUNT(*)::integer INTO n FROM absence
@@ -132,9 +114,7 @@ BEGIN
 
   DELETE FROM holidays WHERE "date" = monday;
 
-  -- ===========================================================================
   -- 6. no other absence reason can be booked this way
-  -- ===========================================================================
   FOR n IN 1..1 LOOP
     res := apply_company_absence('FER1000', ARRAY[tuesday], ARRAY[e1]);
     ASSERT res->>'refused' = 'not_bookable', '6: ferie is not bookable from the grid';
@@ -146,9 +126,7 @@ BEGIN
     ASSERT res->>'refused' = 'not_bookable', '6: nor is an ordinary project';
   END LOOP;
 
-  -- ===========================================================================
   -- 7. a dry run answers the same question without writing
-  -- ===========================================================================
   DELETE FROM absence WHERE employee_id IN (e1, e2, e3)
     AND date BETWEEN monday AND (monday + 6)::date;
   INSERT INTO absence (employee_id, date, reason) VALUES (e2, tuesday, 'FER1000');

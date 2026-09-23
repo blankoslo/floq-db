@@ -42,19 +42,8 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
--- Move staffing rows off Saturdays and Sundays, onto free weekdays in the same
--- week. Manual maintenance; nothing calls it.
---
--- The name is historical: it no longer touches holidays, and MUST NOT. A row on
--- a public holiday used to be impossible, so one could only be a mistake. Since
--- upsert_weekly_staffing() it is how a five-day plan in a week holding 1. mai is
--- recorded — deliberate, and relied upon to read back at five. Sweeping those
--- away would silently shorten every plan made in a week with a red day.
---
--- A weekend row is still nothing but a mistake, so that half stays.
---
--- Rows are moved into available_dates(), which skips holidays, so a weekend row
--- never lands on one.
+-- Move weekend staffing rows onto free weekdays in the same week. Run manually.
+-- Despite the name, holiday rows are left alone.
 CREATE OR REPLACE FUNCTION fix_staffing_on_weekends_and_holidays()
 RETURNS TABLE (employee integer, year integer, week integer, count integer, project text) AS
 $$
