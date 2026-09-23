@@ -116,14 +116,14 @@ BEGIN
           AND policyname = 'person_card_delete_policy'
           AND cmd = 'DELETE'
           AND roles = ARRAY['employee']::name[]
-          AND qual = '(employee_id IS NULL)'
+          AND qual IN ('(employee_id IS NULL)', '(has_salg_access() AND (employee_id IS NULL))')
     ) OR NOT EXISTS (
         SELECT 1
         FROM pg_catalog.pg_policies
         WHERE tablename = 'person_card'
           AND policyname = 'person_card_update_policy'
           AND cmd = 'UPDATE'
-          AND qual = 'true'
+          AND qual IN ('true', 'has_salg_access()')
     ) OR NOT EXISTS (
         SELECT 1
         FROM pg_catalog.pg_policies

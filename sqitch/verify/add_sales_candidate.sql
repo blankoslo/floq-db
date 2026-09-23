@@ -64,9 +64,12 @@ BEGIN
         FROM pg_catalog.pg_policies
         WHERE tablename = 'sales_candidate'
           AND (
-              (policyname = 'sales_candidate_select_policy' AND cmd = 'SELECT' AND qual = 'true')
-              OR (policyname = 'sales_candidate_insert_policy' AND cmd = 'INSERT' AND with_check = 'true')
-              OR (policyname = 'sales_candidate_delete_policy' AND cmd = 'DELETE' AND qual = 'true')
+              (policyname = 'sales_candidate_select_policy' AND cmd = 'SELECT'
+                  AND qual IN ('true', 'has_salg_access()'))
+              OR (policyname = 'sales_candidate_insert_policy' AND cmd = 'INSERT'
+                  AND with_check IN ('true', 'has_salg_access()'))
+              OR (policyname = 'sales_candidate_delete_policy' AND cmd = 'DELETE'
+                  AND qual IN ('true', 'has_salg_access()'))
           )
     ) <> 3 THEN
         RAISE EXCEPTION 'the candidate policies do not match the expected contract';

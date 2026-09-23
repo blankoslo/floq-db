@@ -37,8 +37,8 @@ BEGIN
         WHERE tablename = 'sales_candidate'
           AND policyname = 'sales_candidate_update_policy'
           AND cmd = 'UPDATE'
-          AND qual = 'true'
-          AND with_check = 'true'
+          AND qual IN ('true', 'has_salg_access()')
+          AND with_check IN ('true', 'has_salg_access()')
     ) THEN
         RAISE EXCEPTION 'the candidate update policy does not match the expected contract';
     END IF;
