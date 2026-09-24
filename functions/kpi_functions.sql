@@ -326,7 +326,7 @@ $$
 BEGIN
   RETURN QUERY (
   SELECT
-    COUNT(*)*7.5::double precision as billable_hours
+    (COALESCE(SUM(s.percentage), 0) / 100.0 * 7.5)::double precision as billable_hours
   FROM
     staffing as s,
     projects as p
