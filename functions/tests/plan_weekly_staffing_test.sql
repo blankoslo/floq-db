@@ -430,6 +430,24 @@ BEGIN
   ASSERT pg_temp.n_displaced(p) = 0,  '35: displaced must always be empty';
   ASSERT pg_temp.booked_days(p) = 15, '35: fifteen days, all of them kept';
 
-  RAISE NOTICE 'plan_weekly_staffing: all 35 cases passed';
+  -- 36. part of a day is kept to the hundredth, and rounds past it
+  p := plan_weekly_staffing(
+         '[{"project":"ANE1006","days":4.5,"absence":false}]'::jsonb,
+         '[{"project":"KUN1001","days":0.666,"absence":false}]'::jsonb, 5);
+  ASSERT (SELECT (e.value->>'days')::numeric FROM jsonb_array_elements(p->'allocations') e
+           WHERE e.value->>'project' = 'KUN1001') = 0.67, '36: 0.666 plans as 0.67';
+  ASSERT (SELECT (e.value->>'days')::numeric FROM jsonb_array_elements(p->'allocations') e
+           WHERE e.value->>'project' = 'ANE1006') = 4.5, '36: ANE1006 keeps its half day';
+  ASSERT pg_temp.n_refused(p) = 0, '36: nothing refused';
+
+  -- 37. absence hides part of a day
+  p := plan_weekly_staffing(
+         '[{"project":"FER1000","days":4,"absence":true},
+           {"project":"ANE1006","days":1.2,"absence":false}]'::jsonb,
+         '[]'::jsonb, 5);
+  ASSERT (p->'absence'->>'hidden_days')::numeric = 0.2,
+         '37: one free day leaves 0.2 hidden, got ' || (p->'absence'->>'hidden_days');
+
+  RAISE NOTICE 'plan_weekly_staffing: all 37 cases passed';
 END
 $test$;

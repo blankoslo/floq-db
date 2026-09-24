@@ -5,6 +5,32 @@
 -- sum past its capacity (overbooked). Absence and holidays are never subtracted
 -- from stored rows: anything turning staffing rows into hours must subtract
 -- them itself, and must not assume a week sums to its capacity.
+--
+-- Amounts are days on the wire and may be fractional, to the hundredth
+-- (5 hours = 0.67 days). Internally they are points: 100 points is one day, a
+-- week of five is 500, and a project's points are spread over the week's five
+-- weekdays with any remainder one point each on the first days
+-- (67 -> 14,14,13,13,13). A whole number of days reads back exactly.
+
+-- -----------------------------------------------------------------------------
+-- Points (hundredths of a day) as days: 300 -> 3, 67 -> 0.67.
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.staffing_points_to_days(in_points integer)
+        RETURNS numeric AS
+$$
+  SELECT CASE WHEN in_points % 100 = 0 THEN (in_points / 100)::numeric
+              ELSE ROUND(in_points / 100.0, 2) END;
+$$ LANGUAGE sql IMMUTABLE;
+
+
+-- -----------------------------------------------------------------------------
+-- Days, possibly fractional, as whole points: 0.667 -> 67. Negative is 0.
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.staffing_days_to_points(in_days text)
+        RETURNS integer AS
+$$
+  SELECT GREATEST(ROUND(COALESCE(in_days::numeric, 0) * 100), 0)::integer;
+$$ LANGUAGE sql IMMUTABLE;
 
 -- -----------------------------------------------------------------------------
 -- True for absence that cannot be moved (ferie, sykdom, permisjon).
@@ -29,9 +55,10 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 -- Plan one person-week. Pure: reads no tables.
 --
 --   in_current  [{"project":"ANE1006","days":3,"absence":false}, ...]
---   in_targets  [{"project":"ANE1006","days":2,"absence":false}, ...]
+--   in_targets  [{"project":"ANE1006","days":0.67,"absence":false}, ...]
 --
 -- Callers must set "absence" themselves (e.g. via is_absence_reason).
+-- Days may be fractional; they are rounded to the hundredth.
 --
 -- Returns:
 --   { "capacity_days": 5,
@@ -56,17 +83,17 @@ CREATE OR REPLACE FUNCTION public.plan_weekly_staffing(
 ) RETURNS jsonb
 AS $$
 DECLARE
-    cap           integer   := GREATEST(COALESCE(in_capacity_days, 0), 0);
+    cap           integer   := GREATEST(COALESCE(in_capacity_days, 0), 0) * 100;
     n             integer   := 0;
     proj          text[]    := ARRAY[]::text[];
-    days          integer[] := ARRAY[]::integer[];
+    pts           integer[] := ARRAY[]::integer[];
     is_abs        boolean[] := ARRAY[]::boolean[];
     locked        boolean[] := ARRAY[]::boolean[];
     was_target    boolean[] := ARRAY[]::boolean[];
-    before_days   integer[] := ARRAY[]::integer[];
+    before_pts    integer[] := ARRAY[]::integer[];
     blocked_by    text[]    := ARRAY[]::text[];
     has_protected boolean   := false;
-    absence_days  integer   := 0;
+    absence_pts   integer   := 0;
     rec           jsonb;
     i             integer;
     t_proj        text;
@@ -83,12 +110,12 @@ BEGIN
     -- ---- load the week as it stands, merged by project, sorted for determinism
     FOR rec IN
         SELECT jsonb_build_object('project', x.project,
-                                  'days',    SUM(x.days),
+                                  'points',  SUM(x.points),
                                   'absence', bool_or(x.absence))
         FROM (
-            SELECT e.value->>'project'                                   AS project,
-                   GREATEST(COALESCE((e.value->>'days')::integer, 0), 0) AS days,
-                   COALESCE((e.value->>'absence')::boolean, false)       AS absence
+            SELECT e.value->>'project'                               AS project,
+                   staffing_days_to_points(e.value->>'days')         AS points,
+                   COALESCE((e.value->>'absence')::boolean, false)   AS absence
             FROM jsonb_array_elements(COALESCE(in_current, '[]'::jsonb)) e
             WHERE e.value->>'project' IS NOT NULL
         ) x
@@ -97,19 +124,19 @@ BEGIN
     LOOP
         n          := n + 1;
         proj       := array_append(proj,       rec->>'project');
-        days       := array_append(days,       (rec->>'days')::integer);
+        pts        := array_append(pts,        (rec->>'points')::integer);
         is_abs     := array_append(is_abs,     (rec->>'absence')::boolean);
         was_target := array_append(was_target, false);
     END LOOP;
 
-    before_days := days;
+    before_pts := pts;
 
     -- absence is locked from the start and counts against the week
     FOR i IN 1..n LOOP
         locked := array_append(locked, is_abs[i]);
         IF is_abs[i] THEN
-            absence_days := absence_days + days[i];
-            blocked_by   := array_append(blocked_by, proj[i]);
+            absence_pts := absence_pts + pts[i];
+            blocked_by  := array_append(blocked_by, proj[i]);
             IF is_protected_absence(proj[i]) THEN
                 has_protected := true;
             END IF;
@@ -117,15 +144,15 @@ BEGIN
     END LOOP;
 
     -- ---- apply each target in turn -----------------------------------------
-    -- A project named twice in the targets gets the larger number of days.
+    -- A project named twice in the targets gets the larger amount.
     FOR rec IN
         SELECT jsonb_build_object('project', x.project,
-                                  'days',    MAX(x.days),
+                                  'points',  MAX(x.points),
                                   'absence', bool_or(x.absence))
         FROM (
-            SELECT e.value->>'project'                                   AS project,
-                   GREATEST(COALESCE((e.value->>'days')::integer, 0), 0) AS days,
-                   COALESCE((e.value->>'absence')::boolean, false)       AS absence
+            SELECT e.value->>'project'                               AS project,
+                   staffing_days_to_points(e.value->>'days')         AS points,
+                   COALESCE((e.value->>'absence')::boolean, false)   AS absence
             FROM jsonb_array_elements(COALESCE(in_targets, '[]'::jsonb)) e
             WHERE e.value->>'project' IS NOT NULL
         ) x
@@ -133,7 +160,7 @@ BEGIN
         ORDER BY x.project
     LOOP
         t_proj := rec->>'project';
-        t_req  := (rec->>'days')::integer;
+        t_req  := (rec->>'points')::integer;
 
         t_idx := NULL;
         FOR i IN 1..n LOOP
@@ -144,14 +171,14 @@ BEGIN
         END LOOP;
 
         IF t_idx IS NULL THEN
-            n           := n + 1;
-            proj        := array_append(proj,        t_proj);
-            days        := array_append(days,        0);
-            is_abs      := array_append(is_abs,      (rec->>'absence')::boolean);
-            locked      := array_append(locked,      false);
-            was_target  := array_append(was_target,  false);
-            before_days := array_append(before_days, 0);
-            t_idx       := n;
+            n          := n + 1;
+            proj       := array_append(proj,       t_proj);
+            pts        := array_append(pts,        0);
+            is_abs     := array_append(is_abs,     (rec->>'absence')::boolean);
+            locked     := array_append(locked,     false);
+            was_target := array_append(was_target, false);
+            before_pts := array_append(before_pts, 0);
+            t_idx      := n;
         END IF;
 
         -- Capped at the week alone, ignoring other bookings and absence.
@@ -171,9 +198,9 @@ BEGIN
         IF reason IS NOT NULL THEN
             refused := refused || jsonb_build_array(jsonb_build_object(
                 'project',        t_proj,
-                'requested_days', t_req,
-                'granted_days',   granted,
-                'shortfall_days', t_req - granted,
+                'requested_days', staffing_points_to_days(t_req),
+                'granted_days',   staffing_points_to_days(granted),
+                'shortfall_days', staffing_points_to_days(t_req - granted),
                 'reason',         reason,
                 'blocked_by',     '[]'::jsonb
             ));
@@ -181,7 +208,7 @@ BEGIN
 
         CONTINUE WHEN is_abs[t_idx];
 
-        days[t_idx]       := granted;
+        pts[t_idx]        := granted;
         locked[t_idx]     := true;
         was_target[t_idx] := true;
     END LOOP;
@@ -191,34 +218,34 @@ BEGIN
     FOR i IN 1..n LOOP
         allocations := allocations || jsonb_build_array(jsonb_build_object(
             'project', proj[i],
-            'days',    days[i],
+            'days',    staffing_points_to_days(pts[i]),
             'absence', is_abs[i]
         ));
 
         IF NOT is_abs[i] THEN
-            total := total + days[i];
+            total := total + pts[i];
         END IF;
 
-        IF NOT was_target[i] AND NOT is_abs[i] AND days[i] <> before_days[i] THEN
+        IF NOT was_target[i] AND NOT is_abs[i] AND pts[i] <> before_pts[i] THEN
             displaced := displaced || jsonb_build_array(jsonb_build_object(
                 'project',     proj[i],
-                'days_before', before_days[i],
-                'days_after',  days[i]
+                'days_before', staffing_points_to_days(before_pts[i]),
+                'days_after',  staffing_points_to_days(pts[i])
             ));
         END IF;
     END LOOP;
 
-    -- Planned days beyond what is left of the week after absence.
-    hidden := GREATEST(total - GREATEST(cap - absence_days, 0), 0);
+    -- Planned time beyond what is left of the week after absence.
+    hidden := GREATEST(total - GREATEST(cap - absence_pts, 0), 0);
 
     RETURN jsonb_build_object(
-        'capacity_days', cap,
+        'capacity_days', cap / 100,
         'allocations',   allocations,
         'displaced',     displaced,
         'refused',       refused,
         'absence',       jsonb_build_object(
-                             'days',        absence_days,
-                             'hidden_days', hidden,
+                             'days',        staffing_points_to_days(absence_pts),
+                             'hidden_days', staffing_points_to_days(hidden),
                              'blocked_by',  to_jsonb(blocked_by),
                              'protected',   has_protected)
     );
@@ -264,9 +291,62 @@ $$ LANGUAGE plpgsql;
 
 
 -- -----------------------------------------------------------------------------
+-- Write one project's week as a total of points over its five weekdays,
+-- holidays included, the remainder one point each on the first days. 0 points
+-- removes the week. Returns the dates written.
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.write_weekly_staffing_points(
+    in_employee   integer,
+    in_project    text,
+    in_week_start date,
+    in_points     integer
+) RETURNS SETOF date
+AS $$
+DECLARE
+    n integer;
+BEGIN
+    IF EXISTS (SELECT 1 FROM absence_reasons WHERE id = in_project) THEN
+        RAISE EXCEPTION 'Cannot insert absence into the staffing table: "%"', in_project;
+    END IF;
+
+    DELETE FROM staffing
+    WHERE employee = in_employee
+      AND project  = in_project
+      AND date BETWEEN in_week_start AND (in_week_start + 4)::date;
+
+    SELECT COUNT(*)::integer INTO n
+    FROM weekday_dates(in_week_start, (in_week_start + 4)::date);
+
+    IF n = 0 OR COALESCE(in_points, 0) <= 0 THEN
+        RETURN;
+    END IF;
+
+    RETURN QUERY (
+        WITH spread AS (
+            SELECT w.weekday_date AS date,
+                   in_points / n
+                   + CASE WHEN ROW_NUMBER() OVER (ORDER BY w.weekday_date) <= in_points % n
+                          THEN 1 ELSE 0 END AS percentage
+            FROM weekday_dates(in_week_start, (in_week_start + 4)::date) w
+        ),
+        new_staffing AS (
+            INSERT INTO staffing (employee, project, date, percentage)
+            SELECT in_employee, in_project, s.date, s.percentage
+            FROM spread s
+            WHERE s.percentage > 0
+            RETURNING date
+        )
+        SELECT date FROM new_staffing ORDER BY date
+    );
+END
+$$ LANGUAGE plpgsql;
+
+
+-- -----------------------------------------------------------------------------
 -- Apply a batch of weekly staffing changes.
 --
 --   in_payload  [{"employee":42,"week":"2026-33","project":"ANE1006","days":3}, ...]
+--               days may be fractional: 0.67 is five hours.
 --   in_dry_run  true = return the result without writing anything.
 --
 -- Refusals are returned in the result, not raised. The result includes an
@@ -290,14 +370,13 @@ DECLARE
     undo_out      jsonb   := '[]'::jsonb;
     applied       integer := 0;
     refused_n     integer := 0;
-    pct           integer;
 BEGIN
     FOR grp IN
         SELECT (e.value->>'employee')::integer AS employee,
                e.value->>'week'                AS week,
                jsonb_agg(jsonb_build_object(
                    'project', e.value->>'project',
-                   'days',    GREATEST(COALESCE((e.value->>'days')::integer, 0), 0),
+                   'days',    staffing_points_to_days(staffing_days_to_points(e.value->>'days')),
                    'absence', is_absence_reason(e.value->>'project')
                ) ORDER BY e.value->>'project') AS targets
         FROM jsonb_array_elements(COALESCE(in_payload, '[]'::jsonb)) e
@@ -320,14 +399,14 @@ BEGIN
         INTO cap
         FROM weekday_dates(week_start, (week_start + 4)::date);
 
-        -- Current state in whole days. A date with several absence reasons
+        -- Current state in days, to the hundredth. A date with several absence reasons
         -- counts once, under one reason (protected first).
         SELECT COALESCE(jsonb_agg(t.x ORDER BY t.x->>'project'), '[]'::jsonb)
         INTO current_state
         FROM (
             SELECT jsonb_build_object(
                        'project', s.project,
-                       'days',    ROUND(SUM(s.percentage) / 100.0)::integer,
+                       'days',    staffing_points_to_days(SUM(s.percentage)::integer),
                        'absence', false) AS x
             FROM staffing s
             WHERE s.employee = grp.employee
@@ -351,12 +430,12 @@ BEGIN
         -- what to put back if this batch is undone (staffing only)
         SELECT COALESCE(jsonb_agg(jsonb_build_object(
                    'project', e.value->>'project',
-                   'days',    (e.value->>'days')::integer)
+                   'days',    e.value->'days')
                    ORDER BY e.value->>'project'), '[]'::jsonb)
         INTO pre_state
         FROM jsonb_array_elements(current_state) e
         WHERE COALESCE((e.value->>'absence')::boolean, false) = false
-          AND (e.value->>'days')::integer > 0;
+          AND (e.value->>'days')::numeric > 0;
 
         plan := plan_weekly_staffing(current_state, grp.targets, cap);
 
@@ -365,10 +444,10 @@ BEGIN
             LOOP
                 CONTINUE WHEN COALESCE((alloc->>'absence')::boolean, false);
 
-                IF (alloc->>'days')::integer > 0 AND cap > 0 THEN
-                    pct := ROUND((alloc->>'days')::integer * 100.0 / cap)::integer;
-                    PERFORM upsert_weekly_staffing(grp.employee, alloc->>'project',
-                                                   week_start, (week_start + 4)::date, pct);
+                IF cap > 0 THEN
+                    PERFORM write_weekly_staffing_points(
+                        grp.employee, alloc->>'project', week_start,
+                        staffing_days_to_points(alloc->>'days'));
                 ELSE
                     PERFORM remove_staffing(grp.employee, alloc->>'project',
                                             week_start, (week_start + 4)::date);
@@ -379,12 +458,12 @@ BEGIN
         -- what we expect to find if this batch is undone later
         SELECT COALESCE(jsonb_agg(jsonb_build_object(
                    'project', e.value->>'project',
-                   'days',    (e.value->>'days')::integer)
+                   'days',    e.value->'days')
                    ORDER BY e.value->>'project'), '[]'::jsonb)
         INTO post_state
         FROM jsonb_array_elements(plan->'allocations') e
         WHERE COALESCE((e.value->>'absence')::boolean, false) = false
-          AND (e.value->>'days')::integer > 0;
+          AND (e.value->>'days')::numeric > 0;
 
         weeks_out := weeks_out || jsonb_build_array(
             jsonb_build_object('employee', grp.employee, 'week', grp.week) || plan);
@@ -400,7 +479,7 @@ BEGIN
            AND NOT EXISTS (
                SELECT 1
                FROM jsonb_array_elements(plan->'refused') r
-               WHERE (r.value->>'granted_days')::integer > 0
+               WHERE (r.value->>'granted_days')::numeric > 0
            )
         THEN
             refused_n := refused_n + 1;
@@ -439,7 +518,6 @@ DECLARE
     expect     jsonb;
     restore    jsonb;
     entry      jsonb;
-    pct        integer;
     restored   integer := 0;
     skipped    integer := 0;
     weeks_out  jsonb   := '[]'::jsonb;
@@ -457,12 +535,12 @@ BEGIN
         INTO actual
         FROM (
             SELECT s.project AS project,
-                   ROUND(SUM(s.percentage) / 100.0)::integer AS days
+                   staffing_points_to_days(SUM(s.percentage)::integer) AS days
             FROM staffing s
             WHERE s.employee = emp
               AND s.date BETWEEN week_start AND (week_start + 4)::date
             GROUP BY s.project
-            HAVING ROUND(SUM(s.percentage) / 100.0)::integer > 0
+            HAVING SUM(s.percentage) > 0
         ) t;
 
         expect  := COALESCE(snap->'expect',  '[]'::jsonb);
@@ -494,10 +572,10 @@ BEGIN
 
         FOR entry IN SELECT e.value FROM jsonb_array_elements(restore) e
         LOOP
-            IF (entry->>'days')::integer > 0 AND cap > 0 THEN
-                pct := ROUND((entry->>'days')::integer * 100.0 / cap)::integer;
-                PERFORM upsert_weekly_staffing(emp, entry->>'project',
-                                               week_start, (week_start + 4)::date, pct);
+            IF cap > 0 THEN
+                PERFORM write_weekly_staffing_points(
+                    emp, entry->>'project', week_start,
+                    staffing_days_to_points(entry->>'days'));
             ELSE
                 PERFORM remove_staffing(emp, entry->>'project',
                                         week_start, (week_start + 4)::date);

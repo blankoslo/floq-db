@@ -369,7 +369,110 @@ BEGIN
            '11: the week reads 6 of 5 and says so';
   END IF;
 
-  RAISE NOTICE 'apply_weekly_staffing: all 11 scenarios passed';
+  -- 12. part of a day: points spread over the five weekdays, remainder first
+  DELETE FROM staffing WHERE employee = emp AND date BETWEEN week_start AND (week_start + 4)::date;
+  DELETE FROM absence  WHERE employee_id = emp AND date BETWEEN week_start AND (week_start + 4)::date;
+
+  res := apply_weekly_staffing(
+           jsonb_build_array(jsonb_build_object(
+             'employee', emp, 'week', wk, 'project', p1, 'days', 0.67)));   -- 5 t
+
+  ASSERT (res->>'applied_weeks')::int = 1, '12: five hours is a save';
+  ASSERT (res->'weeks'->0->'allocations'->0->>'days')::numeric = 0.67,
+         '12: planned as 0.67, got ' || (res->'weeks'->0->'allocations'->0->>'days');
+  ASSERT (SELECT array_agg(percentage ORDER BY date) FROM staffing
+           WHERE employee = emp AND project = p1
+             AND date BETWEEN week_start AND (week_start + 4)::date) = ARRAY[14,14,13,13,13],
+         '12: 67 points as 14,14,13,13,13, got '
+         || (SELECT array_agg(percentage ORDER BY date)::text FROM staffing
+              WHERE employee = emp AND project = p1
+                AND date BETWEEN week_start AND (week_start + 4)::date);
+
+  -- a sliver skips the days it cannot reach
+  res := apply_weekly_staffing(
+           jsonb_build_array(jsonb_build_object(
+             'employee', emp, 'week', wk, 'project', p1, 'days', 0.07)));   -- 0,5 t
+  ASSERT (SELECT array_agg(percentage ORDER BY date) FROM staffing
+           WHERE employee = emp AND project = p1
+             AND date BETWEEN week_start AND (week_start + 4)::date) = ARRAY[2,2,1,1,1],
+         '12: 7 points as 2,2,1,1,1';
+
+  res := apply_weekly_staffing(
+           jsonb_build_array(jsonb_build_object(
+             'employee', emp, 'week', wk, 'project', p1, 'days', 0.03)));
+  ASSERT (SELECT COUNT(*) FROM staffing
+           WHERE employee = emp AND project = p1
+             AND date BETWEEN week_start AND (week_start + 4)::date) = 3,
+         '12: 3 points on three days, no zero rows';
+
+  -- half days are exact
+  res := apply_weekly_staffing(
+           jsonb_build_array(jsonb_build_object(
+             'employee', emp, 'week', wk, 'project', p1, 'days', 3.5)));    -- 26,25 t
+  ASSERT (SELECT SUM(percentage) FROM staffing
+           WHERE employee = emp AND project = p1
+             AND date BETWEEN week_start AND (week_start + 4)::date) = 350,
+         '12: 3.5 days is 350 points';
+  ASSERT (SELECT COUNT(DISTINCT percentage) FROM staffing
+           WHERE employee = emp AND project = p1
+             AND date BETWEEN week_start AND (week_start + 4)::date) = 1,
+         '12: and divides evenly, 70 a day';
+
+  -- the cap is the week's 500 points, and the shortfall is fractional
+  res := apply_weekly_staffing(
+           jsonb_build_array(jsonb_build_object(
+             'employee', emp, 'week', wk, 'project', p1, 'days', 5.33)));   -- 40 t
+  ASSERT (res->'weeks'->0->'refused'->0->>'granted_days')::numeric = 5, '12: 5 granted';
+  ASSERT (res->'weeks'->0->'refused'->0->>'shortfall_days')::numeric = 0.33, '12: 0.33 over';
+  ASSERT (SELECT SUM(percentage) FROM staffing
+           WHERE employee = emp AND project = p1
+             AND date BETWEEN week_start AND (week_start + 4)::date) = 500,
+         '12: capped at a full week';
+
+  -- a holiday takes its share of the points like any other weekday
+  DELETE FROM staffing WHERE employee = emp AND date BETWEEN week_start AND (week_start + 4)::date;
+  INSERT INTO holidays ("date", "name")
+  SELECT (week_start + 2)::date, 'Testfridag'
+  WHERE NOT EXISTS (SELECT 1 FROM holidays WHERE "date" = (week_start + 2)::date);
+
+  res := apply_weekly_staffing(
+           jsonb_build_array(jsonb_build_object(
+             'employee', emp, 'week', wk, 'project', p1, 'days', 0.67)));
+  ASSERT (SELECT array_agg(percentage ORDER BY date) FROM staffing
+           WHERE employee = emp AND project = p1
+             AND date BETWEEN week_start AND (week_start + 4)::date) = ARRAY[14,14,13,13,13],
+         '12: a holiday week spreads the same way';
+
+  DELETE FROM holidays WHERE "date" = (week_start + 2)::date;
+
+  -- undo compares and restores fractions exactly
+  DELETE FROM staffing WHERE employee = emp AND date BETWEEN week_start AND (week_start + 4)::date;
+  PERFORM apply_weekly_staffing(
+            jsonb_build_array(jsonb_build_object(
+              'employee', emp, 'week', wk, 'project', p1, 'days', 0.53)));  -- 4 t
+  res  := apply_weekly_staffing(
+            jsonb_build_array(jsonb_build_object(
+              'employee', emp, 'week', wk, 'project', p1, 'days', 2.25)));
+  undo := res->'undo';
+
+  res := restore_weekly_staffing(undo);
+  ASSERT (res->>'restored_weeks')::int = 1,
+         '12: a fractional week is restorable, got ' || res::text;
+  ASSERT (SELECT SUM(percentage) FROM staffing
+           WHERE employee = emp AND project = p1
+             AND date BETWEEN week_start AND (week_start + 4)::date) = 53,
+         '12: and comes back as 53 points';
+
+  -- a booking elsewhere in the week keeps a fraction exactly
+  res := apply_weekly_staffing(
+           jsonb_build_array(jsonb_build_object(
+             'employee', emp, 'week', wk, 'project', p2, 'days', 1)));
+  ASSERT (SELECT SUM(percentage) FROM staffing
+           WHERE employee = emp AND project = p1
+             AND date BETWEEN week_start AND (week_start + 4)::date) = 53,
+         '12: an untouched fractional project keeps its 53 points';
+
+  RAISE NOTICE 'apply_weekly_staffing: all 12 scenarios passed';
 END
 $test$;
 
