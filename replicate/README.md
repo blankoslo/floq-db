@@ -1,13 +1,12 @@
 # Floq database replication
 
-Copies the contents from the production database to test every night so that we
-have “real” data during development.
+Copies the contents from the production database to test every Monday morning so
+that we have “real” data during development.
 
 ## Setup
 
 ### Prerequisites
 
-- [floq-db](https://github.com/blankoslo/floq-db) set up and running in Docker
 - Postgres@15 (or latest major version)
 - 1password access
 
@@ -38,7 +37,7 @@ Check if the Postgres version this docker image is based on is older than the ru
 
 ## Build & deploy
 
-A build trigger on Google Cloud Build is connected to this repo and will build a new version whenever a new commit is created on master. The image is then stored on Google Container Reistry.
+A build trigger on Google Cloud Build watches this directory and will build a new version whenever a commit under `replicate/` lands on master. The image is then stored on Google Container Registry.
 
 [Google Cloud Build triggers](https://console.cloud.google.com/cloud-build/triggers?project=marine-cycle-97212) (look for `floq-db-replicate-docker-container`)
 
@@ -46,6 +45,6 @@ A build trigger on Google Cloud Build is connected to this repo and will build a
 
 ## Runtime
 
-A Google Cloud Run Job runs every morning (at 7) duplicating the prod database in test, using the latest image on Google Container Registry.
+A Google Cloud Run Job runs every Monday at 07:00 (Europe/Oslo), triggered by Cloud Scheduler, duplicating the prod database in test using the latest image on Google Container Registry.
 
 [Google Cloud Run Job](https://console.cloud.google.com/run/jobs/details/europe-north1/floq-db-replicate-prod-to-test/executions?project=marine-cycle-97212)
