@@ -131,3 +131,4 @@ add_sales_case_project [add_sales_candidate] 2026-09-23T09:10:00Z Zaim Imran <za
 reorder_person_tracks [add_sales_candidate] 2026-09-23T09:20:00Z Zaim Imran <zaim.imran@gmail.com> # Put I arbeid last on the person board
 add_salg_role [add_person_board] 2026-09-23T12:00:00Z Zaim Imran <zaim.imran@gmail.com> # Add a salg role to employee_role
 restrict_person_board_to_salg [add_salg_role add_sales_candidate_awarded reorder_person_tracks] 2026-09-23T12:10:00Z Zaim Imran <zaim.imran@gmail.com> # Only the salg role reads the person board and candidate matches
+grant_select_to_employee_and_read_only_on_profession [add_trak add_employee_user add_read_only_user] 2026-10-01T11:31:35Z Erlend Åmdal <erlend.amdal@blank.no> # Grant employee and read_only SELECT on profession, the lookup table behind employees.profession_id
