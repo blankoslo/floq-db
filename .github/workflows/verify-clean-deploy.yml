@@ -1,12 +1,28 @@
-name: Verify clean-slate deploy
+name: Verify clean-slate deploy and revert
 
 # Confirms sqitch/deploy/*.sql (in full, in order) and then functions/deploy.sh
-# both apply cleanly to a brand new, empty database, and that running
-# functions/deploy.sh a second time against that same database is a no-op.
+# both apply cleanly to a brand new, empty database, that running
+# functions/deploy.sh a second time against that same database is a no-op, and
+# that the entire sqitch plan then reverts cleanly back to @ROOT.
+#
 # Catches the exact failure modes this repo has had before: a migration or
 # function silently depending on something only manual, out-of-band deploy
-# order happened to provide, or a function/view file missing OR REPLACE that
-# fails outright on a second deploy.
+# order happened to provide; a function/view file missing OR REPLACE that
+# fails outright on a second deploy; and — the revert step — a function in
+# functions/ with a hard dependency on a sqitch-managed type/view that only
+# surfaces when something later tries to rename or rebuild it, a role dropped
+# before its grants are revoked, or objects dropped out of dependency order.
+#
+# What this does NOT catch: a revert that only fails because real rows
+# reference the thing being removed. The database here starts empty and never
+# accumulates application data, so a DELETE FROM some_lookup_table WHERE
+# slug = 'x' succeeds trivially even if, against a database where a case or
+# an event actually used 'x', the same statement would hit a foreign key
+# violation. add_parkert_sales_stage's and add_sales_case_attachments's
+# reverts both had exactly this bug, found only by testing against a database
+# with real data — this job would have passed either way. A green run here is
+# evidence the plan is structurally revertible, not that every revert script
+# is safe to run against test or prod as-is.
 
 on:
   push:
@@ -89,3 +105,19 @@ jobs:
         env:
           PGPASSWORD: ci_password
         run: (cd functions && ./deploy.sh --local)
+
+      - name: Revert the entire sqitch plan
+        # Run after functions/ has deployed, not before: a function's hard
+        # dependency on a sqitch-managed type or view (see
+        # functions/employees_roles.sql's history) only breaks a revert once
+        # that function actually exists. @ROOT is sqitch's "fully reverted"
+        # floor — it leaves only the first change (employees_table) deployed.
+        env:
+          SQITCH_PASSWORD: ci_password
+        run: |
+          docker run --rm --network host \
+            -v "${{ github.workspace }}/sqitch:/repo" \
+            -v "/tmp/sqitch-home/.sqitch:/home/.sqitch" \
+            -w /repo \
+            -e SQITCH_PASSWORD \
+            sqitch/sqitch revert --to @ROOT -y db:pg://root@localhost/floq
