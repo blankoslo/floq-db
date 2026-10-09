@@ -2,6 +2,8 @@
 
 BEGIN;
 
+DROP VIEW staffed_hours;
+
 ALTER TABLE absence
     DROP CONSTRAINT absence_pkey,
     DROP COLUMN percentage,
