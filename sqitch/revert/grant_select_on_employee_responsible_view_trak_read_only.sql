@@ -2,6 +2,6 @@
 
 BEGIN;
 
-REVOKE SELECT ON employee_project_responsible TO trak_read_only;
+REVOKE SELECT ON employee_project_responsible FROM trak_read_only;
 
 COMMIT;
