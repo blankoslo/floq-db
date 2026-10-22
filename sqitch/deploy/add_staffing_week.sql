@@ -1,4 +1,7 @@
 -- Deploy floq:add_staffing_week to pg
+-- requires: employees_table
+-- requires: time_tracking_tables
+-- requires: change_projects_id_to_text
 -- requires: absence_table
 -- requires: add_employee_user
 -- requires: add_read_only_user
