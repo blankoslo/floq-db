@@ -1,10 +1,7 @@
 -- Deploy floq:add_staffing_week to pg
--- requires: employees_table
--- requires: time_tracking_tables
 -- requires: absence_table
 -- requires: add_employee_user
 -- requires: add_read_only_user
--- requires: add_trak_read_only_user
 
 BEGIN;
 
@@ -31,6 +28,6 @@ CREATE TABLE staffing_week (
 CREATE INDEX staffing_week_week_start_idx ON staffing_week (week_start);
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE staffing_week TO employee;
-GRANT SELECT ON TABLE staffing_week TO read_only, trak_read_only;
+GRANT SELECT ON TABLE staffing_week TO read_only;
 
 COMMIT;
