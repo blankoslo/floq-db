@@ -62,7 +62,6 @@ GROUP BY x.from_date, x.to_date, hours.hours
 END
 $$ LANGUAGE plpgsql;
 
-
 CREATE OR REPLACE FUNCTION kpi_sick(in_from_date date, in_to_date date)
 RETURNS TABLE (
  from_date date,
@@ -87,7 +86,6 @@ GROUP BY x.from_date, x.to_date, sum_business_hours, sick_hours
 END
 $$ LANGUAGE plpgsql;
 
-
 CREATE OR REPLACE FUNCTION kpi_ul(in_from_date date, in_to_date date)
 RETURNS TABLE (
  from_date date,
@@ -110,10 +108,6 @@ GROUP BY x.from_date, x.to_date
 );
 END
 $$ LANGUAGE plpgsql;
-
-
-
-
 
 -- HELPERS
 CREATE OR REPLACE FUNCTION sum_business_hours(in_from_date date, in_to_date date)
@@ -146,8 +140,6 @@ FROM
 END
 $$ LANGUAGE plpgsql;
 
-
-
 CREATE OR REPLACE FUNCTION accumulated_billed_hours(from_date date, to_date date)
 RETURNS TABLE (sum_available_hours double precision, sum_billable_hours numeric) AS
 $$
@@ -167,8 +159,6 @@ BEGIN
     GROUP BY (sum_business_hours, unavailable_hours)) LIMIT 1;
 END
 $$ LANGUAGE plpgsql;
-
-
 
 CREATE OR REPLACE FUNCTION unavailable_time_entry_hours(in_from_date date, in_to_date date)
 RETURNS TABLE (
@@ -196,36 +186,6 @@ BEGIN
     (select * from generate_series(date_trunc('MONTH', in_from_date), date_trunc('MONTH', in_to_date),'1 month') AS monat) AS mt order by 1;
     END
 $$ LANGUAGE plpgsql;
-
-
-
-CREATE OR REPLACE FUNCTION unavailable_staffing_hours(start_date date, end_date date)
-RETURNS TABLE (
-  unavailable_hours numeric
-) AS
-$$
-BEGIN
-  RETURN QUERY (
-
-SELECT
-  tt.unavailable
-FROM
-  (
-    SELECT
-      7.5 * count(*) AS unavailable
-    FROM
-      staffing 
-    JOIN projects ON
-      staffing.project = projects.id
-    WHERE 
-      billable='unavailable' AND
-      staffing.date <= end_date AND
-      staffing.date >= start_date
-  ) tt  
- );
-END
-$$ LANGUAGE plpgsql;
-
 
 CREATE OR REPLACE FUNCTION sick_hours(start_date date, end_date date)
 RETURNS TABLE (
@@ -270,7 +230,6 @@ begin
 end
 $function$;
 
-
 CREATE OR REPLACE FUNCTION kpi_prodev(start_date date, end_date date)
   RETURNS TABLE(from_date date, to_date date, percent double precision, project_hours double precision, available_hours double precision)
   LANGUAGE plpgsql
@@ -293,69 +252,7 @@ $function$;
 
 -- FG Deviation
 
-CREATE OR REPLACE FUNCTION kpi_fgdev(start_date date, end_date date)
-  RETURNS TABLE(from_date date, to_date date, blanned_billable_hours double precision, achieved_billable_hours double precision, deviation double precision)
-AS $function$
-begin
-  return query (
-    SELECT
-      (d.org_date::date - interval '12 week')::DATE AS from_date,
-      d.org_date::DATE AS to_date,
-      pbh.billable_hours::double precision AS planned_billable_hours,
-      abh.sum_billable_hours::double precision AS achieved_billeable_hours,
-      ((abh.sum_billable_hours - pbh.billable_hours)/abh.sum_billable_hours)*100::double precision AS deviation
-    FROM
-      (
-        SELECT
-          dd AS org_date,
-          (dd - ((SELECT CASE WHEN wd = 6 THEN 0 ELSE wd END FROM date_part('dow', dd) AS wd) || ' day')::INTERVAL) AS adj_date
-        FROM
-          generate_series(start_date::timestamp, end_date::timestamp, '1 month') AS dd
-      ) d,
-      planned_billable_hours((d.org_date::date - interval '12 week')::DATE, d.org_date::DATE) pbh,
-      accumulated_billed_hours((d.org_date::date - interval '12 week')::DATE, d.org_date::DATE) abh
-  );
-end
-$function$ LANGUAGE plpgsql;
-
 -- Visibility - forecasted FG (based of 12 next weeks)
-
-CREATE OR REPLACE FUNCTION planned_billable_hours(start_date date, end_date date)
-  RETURNS TABLE (billable_hours double precision) AS
-$$
-BEGIN
-  RETURN QUERY (
-  SELECT
-    (COALESCE(SUM(s.percentage), 0) / 100.0 * 7.5)::double precision as billable_hours
-  FROM
-    staffing as s,
-    projects as p
-  WHERE
-    s.project = p.id AND
-    p.billable = 'billable' AND
-    s.date BETWEEN start_date AND end_date
-  );
-END
-$$ LANGUAGE plpgsql;
-
-
-CREATE OR REPLACE FUNCTION forcasted_fg_in_period(start_date date, end_date date)
-  RETURNS TABLE(planned_billable_hours double precision, available_hours double precision, percent double precision)
-  LANGUAGE plpgsql
-AS $function$
-begin
-  return query (
-    SELECT
-      pbh.billable_hours::double precision,
-      fah.available_hours::double precision,
-      (pbh.billable_hours/fah.available_hours)*100::double precision as percentage_billable
-    FROM
-    forcasted_available_hours(start_date, end_date) fah,
-    planned_billable_hours(start_date, end_date) pbh
-  );
-end
-$function$;
-
 
 CREATE OR REPLACE FUNCTION kpi_visibility(start_date date, end_date date)
   RETURNS TABLE(week integer, year integer, week_date date, percent double precision)
@@ -463,28 +360,6 @@ $$ LANGUAGE plpgsql;
 
 -- Forcasted Available Hours (FG Deviation / Forcasted FG)
 
-CREATE OR REPLACE FUNCTION unavilable_staffing_dates_in_period(from_date date, to_date date)
-  RETURNS TABLE (employee_id integer, work_day date) AS
-$$
-BEGIN
-  RETURN QUERY (
-    SELECT
-    e.id as employee_id,
-    s.date as staffed_id
-  FROM
-    employees AS e,
-    staffing AS s,
-    projects AS p
-  WHERE
-    e.id = s.employee AND
-    s.project = p.id AND
-    p.billable = 'unavailable' AND
-    s.date BETWEEN greatest(from_date, e.date_of_employment) AND least(e.termination_date, to_date)
-  );
-END
-$$ LANGUAGE plpgsql;
-
-
 CREATE OR REPLACE FUNCTION all_employee_work_dates_in_period(from_date date, to_date date)
   RETURNS TABLE (employee_id int, work_date date) AS
 $$
@@ -501,7 +376,6 @@ BEGIN
   );
 END
 $$ LANGUAGE plpgsql;
-
 
 CREATE OR REPLACE FUNCTION all_absence_dates_in_period(from_date date, to_date date)
   RETURNS TABLE (employee_id int, absence_date date) AS
@@ -520,25 +394,6 @@ BEGIN
     a.reason = ar.id AND
     ar.billable = 'unavailable' AND
     a.date BETWEEN greatest(from_date, e.date_of_employment) AND least(e.termination_date, to_date)
-  );
-END
-$$ LANGUAGE plpgsql;
-
-
-CREATE OR REPLACE FUNCTION forcasted_available_hours(start_date date, end_date date)
-  RETURNS TABLE (all_hours double precision, unavail_staffing_hours double precision, unavail_absence_hours double precision, available_hours double precision) AS
-$$
-BEGIN
-  RETURN QUERY (
-  SELECT
-    ewd.hours::double precision as all_hours,
-    usd.hours::double precision as unavail_staffing_hours,
-    abs.hours::double precision as unavail_absence_hours,
-    (ewd.hours - usd.hours - abs.hours)::double precision as available_hours
-  FROM
-    (SELECT COUNT(work_date) * 7.5 as hours FROM all_employee_work_dates_in_period(start_date, end_date)) AS ewd,
-    (SELECT COUNT(work_day) * 7.5 as hours FROM unavilable_staffing_dates_in_period(start_date, end_date)) AS usd,
-    (SELECT COUNT(absence_date) * 7.5 as hours FROM all_absence_dates_in_period(start_date, end_date)) AS abs
   );
 END
 $$ LANGUAGE plpgsql;
@@ -584,8 +439,6 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
-
-
 -- Accumualted FG
 CREATE OR REPLACE FUNCTION kpi_accumulated_fg(from_date date, to_date date)
   RETURNS TABLE (sum_start_date date, sum_end_date date, summed_fg double precision) AS
@@ -603,7 +456,6 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
-
 -- Accumulated OT
 CREATE OR REPLACE FUNCTION kpi_accumulated_ot(from_date date, to_date date)
   RETURNS TABLE (sum_start_date date, sum_end_date date, summed_ot double precision) AS
@@ -620,7 +472,6 @@ BEGIN
   );
 END
 $$ LANGUAGE plpgsql;
-
 
 -- Unaccompanied Customer Involvement KPI
 -- Employees who have registered more than 50% of their available hours at one specific customer (FG)
@@ -644,7 +495,6 @@ BEGIN
 	);
 END
 $$ LANGUAGE plpgsql;
-
 
 CREATE OR REPLACE FUNCTION unaccompanied_customer_involvement_in_period(from_date date, to_date date)
 RETURNS TABLE (customer_id text, employee_count integer) AS 
@@ -687,7 +537,6 @@ BEGIN
 	);
 END
 $$ LANGUAGE plpgsql;
-
 
 CREATE OR REPLACE FUNCTION number_of_employees_in_period(from_date date, to_date date)
 RETURNS TABLE (employee_count bigint) AS 
@@ -738,5 +587,3 @@ RETURN QUERY (
     );
 end
 $$ LANGUAGE plpgsql;
-
-

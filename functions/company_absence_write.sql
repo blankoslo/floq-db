@@ -1,5 +1,24 @@
+-- -----------------------------------------------------------------------------
+-- True for absence that cannot be moved (ferie, sykdom, permisjon).
+-- Not the same set as is_absence_reason().
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.is_protected_absence(reason text)
+        RETURNS boolean AS
+$$
+BEGIN
+  RETURN (    reason = 'FER1000'  -- Ferie
+           OR reason = 'SYK1000'  -- Egenmelding
+           OR reason = 'SYK1001'  -- Sykemelding
+           OR reason = 'SYK1002'  -- Sykt barn
+           OR reason = 'PER1000'  -- Permisjon med lønn
+           OR reason = 'PER1001'  -- Permisjon uten lønn
+         );
+END
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+
 -- Booking company absence (fagdag) for many people at once.
--- Does not touch `staffing`. Refusals are returned as values, not exceptions.
+-- Does not touch `staffing_week`. Refusals are returned as values, not exceptions.
 
 -- Which absence reasons may be booked on someone else's behalf.
 CREATE OR REPLACE FUNCTION public.is_bookable_absence(reason text)
@@ -55,7 +74,7 @@ BEGIN
     LOOP
         FOREACH emp IN ARRAY COALESCE(in_employees, ARRAY[]::integer[])
         LOOP
-            -- Same lock key as the weekly staffing writes.
+            -- Same lock key as the staffing grid's writes in floq-platform.
             IF NOT in_dry_run THEN
                 PERFORM pg_advisory_xact_lock(
                     hashtext('weekly_staffing:' || emp || ':' ||
