@@ -1,6 +1,9 @@
 -- Deploy floq:backfill_staffing_week to pg
 -- requires: add_staffing_week
+-- requires: staffing_table
+-- requires: employees_table
 -- requires: holidays_table
+-- requires: absence_table
 
 BEGIN;
 
@@ -13,6 +16,8 @@ BEGIN;
 -- public holidays, inside employment - capped at 100. That is the rule the platform
 -- writes with (StaffedWeekRule): 3 days in a week with two holidays is 100. Nobody
 -- without a date_of_employment has working days, and a week with none gets no row.
+-- Absence codes are left behind: they belong in absence, and staffing_week refuses
+-- them.
 INSERT INTO staffing_week (employee, week_start, project, percentage)
 SELECT booked.employee,
        booked.week_start,
@@ -21,6 +26,7 @@ SELECT booked.employee,
 FROM (
     SELECT employee, project, date_trunc('week', date)::date AS week_start, SUM(percentage) AS points
     FROM staffing
+    WHERE NOT is_absence_reason(project)
     GROUP BY employee, project, date_trunc('week', date)
 ) booked
 JOIN employees e ON e.id = booked.employee

@@ -7,6 +7,7 @@ BEGIN
         FROM (
             SELECT employee, project, date_trunc('week', date)::date AS week_start
             FROM staffing
+            WHERE NOT is_absence_reason(project)
             GROUP BY employee, project, date_trunc('week', date)
             HAVING SUM(percentage) > 0
         ) booked
