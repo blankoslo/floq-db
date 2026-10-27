@@ -1,9 +1,12 @@
--- Verify floq:drop_staffing on pg
+-- Verify floq:rename_staffing_to_daily_staffing on pg
 
 DO $$
 BEGIN
-    IF to_regclass('public.staffing') IS NOT NULL THEN
-        RAISE EXCEPTION 'staffing still exists';
+    IF to_regclass('public.staffing') IS NOT NULL OR to_regclass('public.daily_staffing') IS NULL THEN
+        RAISE EXCEPTION 'staffing has not been renamed to daily_staffing';
+    END IF;
+    IF has_table_privilege('employee', 'public.daily_staffing', 'INSERT') THEN
+        RAISE EXCEPTION 'daily_staffing is still writable by employee';
     END IF;
     IF EXISTS (
         SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace

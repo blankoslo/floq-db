@@ -1,14 +1,16 @@
--- Deploy floq:drop_staffing to pg
+-- Deploy floq:rename_staffing_to_daily_staffing to pg
 -- requires: staffing_table
 -- requires: update_view_employee_project_responsible
 -- requires: alter_table_absence_add_percentage
 -- requires: backfill_staffing_week
+-- requires: add_employee_user
 
 BEGIN;
 
 -- Staffing is staffing_week, and nothing reads or writes the per-date table any more.
--- The functions that did are dropped with it; they live in functions/ and would
--- otherwise fail at their next call rather than here.
+-- It is kept, read-only, as daily_staffing for its history. The functions that used it
+-- are dropped; they live in functions/ and would otherwise fail at their next call.
+-- The views are dropped rather than left to follow the rename.
 DROP VIEW employee_project_responsible;
 DROP VIEW staffed_hours;
 
@@ -44,6 +46,7 @@ BEGIN
 END
 $$;
 
-DROP TABLE staffing;
+ALTER TABLE staffing RENAME TO daily_staffing;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLE daily_staffing FROM employee;
 
 COMMIT;

@@ -1,22 +1,11 @@
--- Revert floq:drop_staffing from pg
+-- Revert floq:rename_staffing_to_daily_staffing from pg
 
 BEGIN;
 
--- The table and views come back empty: a pg_dump of staffing taken before the
--- deploy is what restores the rows. The functions come back by running
--- functions/deploy.sh from a commit before this change.
-CREATE TABLE staffing (
-    employee   INTEGER NOT NULL,
-    project    TEXT    NOT NULL,
-    date       DATE    NOT NULL,
-    percentage INTEGER NOT NULL DEFAULT 100,
-    CONSTRAINT staffing_pkey PRIMARY KEY (employee, project, date),
-    CONSTRAINT staffing_employee_fkey FOREIGN KEY (employee) REFERENCES employees(id) ON UPDATE CASCADE,
-    CONSTRAINT staffing_project_fkey FOREIGN KEY (project) REFERENCES projects(id) ON UPDATE CASCADE
-);
-
+-- The functions come back by running functions/deploy.sh from a commit before this
+-- change.
+ALTER TABLE daily_staffing RENAME TO staffing;
 GRANT ALL ON TABLE staffing TO employee;
-GRANT SELECT ON TABLE staffing TO read_only, trak_read_only;
 
 CREATE VIEW staffed_hours AS
 (WITH staffing_totals AS (
