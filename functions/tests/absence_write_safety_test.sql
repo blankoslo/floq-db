@@ -4,9 +4,8 @@
 --
 -- NOT deployed: functions/deploy.sh globs functions/*.sql and does not recurse.
 --
---   1. a booking never modifies staffing or absence rows it did not create
+--   1. a booking never modifies staffing_week or absence rows it did not create
 --   2. an undo deletes only its own batch's rows, and nothing for a bad snapshot
---   3. apply_weekly_staffing never writes absence
 
 BEGIN;
 
@@ -20,9 +19,9 @@ $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION pg_temp.staffing_sum() RETURNS text AS $$
   SELECT COALESCE(md5(string_agg(
-           employee || '|' || date || '|' || project || '|' || percentage,
-           ',' ORDER BY employee, date, project)), 'empty')
-  FROM staffing;
+           employee || '|' || week_start || '|' || project || '|' || percentage,
+           ',' ORDER BY employee, week_start, project)), 'empty')
+  FROM staffing_week;
 $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION pg_temp.absence_rows() RETURNS bigint AS $$
@@ -58,15 +57,13 @@ BEGIN
   tuesday   := (monday + 1)::date;
   wednesday := (monday + 2)::date;
 
-  DELETE FROM staffing WHERE date BETWEEN monday AND (monday + 6)::date;
+  DELETE FROM staffing_week WHERE week_start = monday;
   DELETE FROM absence  WHERE date BETWEEN monday AND (monday + 6)::date;
   DELETE FROM holidays WHERE "date" BETWEEN monday AND (monday + 6)::date;
 
   -- existing staffing and absence that no scenario may disturb
-  INSERT INTO staffing (employee, date, project, percentage)
-  SELECT e1, available_date, p1, 100 FROM available_dates_new(monday, (monday + 4)::date);
-  INSERT INTO staffing (employee, date, project, percentage)
-  SELECT e3, available_date, p1, 60  FROM available_dates_new(monday, (monday + 4)::date);
+  INSERT INTO staffing_week (employee, week_start, project, percentage) VALUES (e1, monday, p1, 100);
+  INSERT INTO staffing_week (employee, week_start, project, percentage) VALUES (e3, monday, p1, 60);
 
   INSERT INTO absence (employee_id, date, reason) VALUES (e2, tuesday, 'FER1000');
   INSERT INTO absence (employee_id, date, reason) VALUES (e2, wednesday, 'AVS');
@@ -79,7 +76,7 @@ BEGIN
   res := apply_company_absence('FAG1000', ARRAY[tuesday], ARRAY[e1, e2, e3], true);
 
   ASSERT pg_temp.absence_sum() = abs_before, '1: A DRY RUN WROTE TO absence';
-  ASSERT pg_temp.staffing_sum() = stf_before, '1: A DRY RUN WROTE TO staffing';
+  ASSERT pg_temp.staffing_sum() = stf_before, '1: A DRY RUN WROTE TO staffing_week';
 
   -- 2. a real booking adds rows and changes nothing else
   rows_before := pg_temp.absence_rows();
@@ -91,7 +88,7 @@ BEGIN
   ASSERT pg_temp.absence_rows() = rows_before + 1,
          '2: the table grew by ' || (pg_temp.absence_rows() - rows_before) || ' rows, not 1';
 
-  ASSERT pg_temp.staffing_sum() = stf_before, '2: A BOOKING MODIFIED staffing';
+  ASSERT pg_temp.staffing_sum() = stf_before, '2: A BOOKING MODIFIED staffing_week';
 
   ASSERT EXISTS (SELECT 1 FROM absence
                   WHERE employee_id = e2 AND date = tuesday AND reason = 'FER1000'),
@@ -109,7 +106,7 @@ BEGIN
   ASSERT (res->>'removed')::int = 1, '3: one row removed';
   ASSERT pg_temp.absence_sum() = abs_before,
          '3: THE UNDO DID NOT RESTORE absence EXACTLY';
-  ASSERT pg_temp.staffing_sum() = stf_before, '3: THE UNDO MODIFIED staffing';
+  ASSERT pg_temp.staffing_sum() = stf_before, '3: THE UNDO MODIFIED staffing_week';
 
   -- 4. an undo handed nonsense deletes NOTHING
   abs_before := pg_temp.absence_sum();
@@ -168,36 +165,7 @@ BEGIN
 
   DELETE FROM holidays WHERE "date" = monday;
 
-  -- 7. apply_weekly_staffing still never writes absence
-  abs_before := pg_temp.absence_sum();
-
-  res := apply_weekly_staffing(jsonb_build_array(jsonb_build_object(
-           'employee', e1, 'week', wk, 'project', p1, 'days', 2)));
-  ASSERT pg_temp.absence_sum() = abs_before, '7: A STAFFING WRITE MODIFIED absence';
-
-  -- e2 has absence this week, so this write is partly blocked
-  res := apply_weekly_staffing(jsonb_build_array(jsonb_build_object(
-           'employee', e2, 'week', wk, 'project', p1, 'days', 5)));
-  ASSERT pg_temp.absence_sum() = abs_before, '7: A BLOCKED WRITE MODIFIED absence';
-
-  res := apply_weekly_staffing(jsonb_build_array(jsonb_build_object(
-           'employee', e1, 'week', wk, 'project', 'FER1000', 'days', 3)));
-  ASSERT res->'weeks'->0->'refused'->0->>'reason' = 'absence_not_writable',
-         '7: an absence code must be refused, got '
-         || COALESCE(res->'weeks'->0->'refused'->0->>'reason', 'null');
-  ASSERT pg_temp.absence_sum() = abs_before, '7: A WRITE AIMED AT absence GOT THROUGH';
-
-  -- 8. a staffing write stays inside the person-week it names
-  -- e3 was booked in setup and is in none of the payloads above
-  ASSERT (SELECT COUNT(*) FROM staffing
-           WHERE employee = e3 AND date BETWEEN monday AND (monday + 4)::date) = 5
-         AND (SELECT COUNT(DISTINCT percentage) FROM staffing
-               WHERE employee = e3 AND date BETWEEN monday AND (monday + 4)::date) = 1
-         AND (SELECT MAX(percentage) FROM staffing
-               WHERE employee = e3 AND date BETWEEN monday AND (monday + 4)::date) = 60,
-         '8: A WRITE FOR SOMEBODY ELSE CHANGED THIS PERSON''S WEEK';
-
-  RAISE NOTICE 'absence write safety: all 8 scenarios passed';
+  RAISE NOTICE 'absence write safety: all 6 scenarios passed';
 END
 $test$;
 

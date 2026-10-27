@@ -1,83 +1,3 @@
--- Staff all available dates within a range.
-CREATE OR REPLACE FUNCTION public.insert_staffing(
-    in_employee integer,
-    in_project text,
-    start_date date,
-    end_date date,
-    percentage integer DEFAULT 100
-) RETURNS SETOF date
-AS $$
-DECLARE
-    is_absence BOOLEAN;
-BEGIN
-    SELECT EXISTS (
-        SELECT 1
-        FROM absence_reasons
-        WHERE id = in_project
-    ) INTO is_absence;
-
-    IF is_absence THEN
-        RAISE EXCEPTION 'Cannot insert absence into the staffing table: "%"', in_project;
-    END IF;
-
-    RETURN QUERY (
-        WITH new_staffing AS (
-            INSERT INTO staffing
-            SELECT
-                in_employee AS employee,
-                in_project AS project,
-                available_date AS date,
-                percentage AS percentage
-            FROM available_dates_new(start_date, end_date)
-            ON CONFLICT (employee, project, date) DO NOTHING
-            RETURNING date
-        )
-        SELECT date FROM new_staffing ORDER BY date
-    );
-END
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION public.upsert_staffing(
-    in_employee integer,
-    in_project text,
-    start_date date,
-    end_date date,
-    percentage integer DEFAULT 100
-) RETURNS SETOF date
-AS $$
-BEGIN
-    DELETE FROM staffing
-    WHERE employee = in_employee
-        AND project = in_project
-        AND date BETWEEN start_date AND end_date;
-
-    RETURN QUERY SELECT * FROM insert_staffing(in_employee, in_project, start_date, end_date, percentage);
-END
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION public.remove_staffing(
-    in_employee integer,
-    in_project text,
-    start_date date,
-    end_date date DEFAULT NULL
-) RETURNS SETOF date
-AS $$
-BEGIN
-    RETURN QUERY (
-        WITH deleted_rows AS (
-            DELETE FROM staffing
-            WHERE employee = in_employee
-                AND project = in_project
-                AND date >= start_date
-                AND (end_date IS NULL OR date <= end_date) -- end_date = null: delete everything since start_date
-            RETURNING date
-        )
-        SELECT date FROM deleted_rows ORDER BY date
-    );
-END
-$$ LANGUAGE plpgsql;
-
-
 CREATE OR REPLACE FUNCTION public.available_dates_new(start_date date, end_date date)
 RETURNS TABLE(available_date date) AS
 $$
@@ -88,18 +8,6 @@ BEGIN
     WHERE is_weekday(d::date) AND NOT is_holiday(d::date);
 END
 $$ LANGUAGE plpgsql;
-
--- Every Monday-to-Friday date in the range, holidays included.
-CREATE OR REPLACE FUNCTION public.weekday_dates(start_date date, end_date date)
-RETURNS TABLE(weekday_date date) AS
-$$
-BEGIN
-    RETURN QUERY
-    SELECT d::date AS weekday_date
-    FROM generate_series(start_date, end_date, '1 day'::interval) d
-    WHERE is_weekday(d::date);
-END
-$$ LANGUAGE plpgsql STABLE;
 
 CREATE OR REPLACE FUNCTION public.availability_percentage(
     start_date date,
@@ -125,7 +33,6 @@ BEGIN
 
     IF in_employee IS NOT NULL THEN
         -- Single employee
-
 
         -- Calculate unavailable percentage (absence marked as unavailable)
         SELECT COALESCE(SUM(100), 0)
