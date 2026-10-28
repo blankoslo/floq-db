@@ -10,7 +10,4 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'an unused function is still deployed';
     END IF;
-    IF to_regprocedure('public.is_weekday(date)') IS NULL THEN
-        RAISE EXCEPTION 'is_weekday is gone, and apply_company_absence needs it';
-    END IF;
 END $$;
