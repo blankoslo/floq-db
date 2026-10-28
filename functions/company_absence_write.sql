@@ -1,3 +1,15 @@
+-- is_holiday is defined in sqitch (absence_table migration), not here, since
+-- a CHECK constraint there needs it to exist before functions/ has run.
+CREATE OR REPLACE FUNCTION is_weekday(d date)
+        RETURNS boolean AS
+$$
+BEGIN
+  RETURN NOT (    EXTRACT(dow FROM d) = 0
+               OR EXTRACT(dow FROM d) = 6
+             );
+END
+$$ LANGUAGE plpgsql;
+
 -- -----------------------------------------------------------------------------
 -- True for absence that cannot be moved (ferie, sykdom, permisjon).
 -- Not the same set as is_absence_reason().
