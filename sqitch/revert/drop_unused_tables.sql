@@ -44,4 +44,23 @@ CREATE TABLE ranked_matchups (
   PRIMARY KEY (id)
 );
 
+CREATE TABLE profession_task (
+    profession_id text NOT NULL,
+    task_id uuid NOT NULL,
+    CONSTRAINT profession_task_pkey PRIMARY KEY (profession_id, task_id),
+    CONSTRAINT profession_task_profession_id_fkey FOREIGN KEY (profession_id) REFERENCES profession(slug) ON DELETE CASCADE,
+    CONSTRAINT profession_task_task_id_fkey FOREIGN KEY (task_id) REFERENCES task(id) ON DELETE CASCADE
+);
+
+CREATE TABLE employee_task_comments (
+    id uuid DEFAULT gen_random_uuid(),
+    text text NOT NULL,
+    created_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    created_by_id integer NOT NULL,
+    employee_task_id uuid NOT NULL,
+    CONSTRAINT employee_task_comments_pkey PRIMARY KEY (id),
+    CONSTRAINT employee_task_comments_created_by_id_fkey FOREIGN KEY (created_by_id) REFERENCES employees(id) ON DELETE CASCADE,
+    CONSTRAINT employee_task_comments_employee_task_id_fkey FOREIGN KEY (employee_task_id) REFERENCES employee_task(id) ON DELETE CASCADE
+);
+
 COMMIT;
