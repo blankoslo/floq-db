@@ -1,5 +1,6 @@
 -- Deploy floq:add_ledger_expenses to pg
 -- requires: employees_table
+-- requires: add_employee_user
 
 BEGIN;
 
@@ -80,5 +81,10 @@ CREATE TABLE ledger_fagutvikling_participant (
 
     CONSTRAINT ledger_fagutvikling_participant_pkey PRIMARY KEY (expense_id, employee_id)
 );
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
+    ledger_expense, ledger_tech_expense, ledger_social_expense,
+    ledger_fagutvikling_expense, ledger_fagutvikling_participant
+TO employee;
 
 COMMIT;

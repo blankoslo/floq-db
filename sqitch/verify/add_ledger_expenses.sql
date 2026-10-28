@@ -44,6 +44,15 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'participants do not follow their fagutvikling expense';
     END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM unnest(ARRAY['ledger_expense', 'ledger_tech_expense', 'ledger_social_expense',
+                          'ledger_fagutvikling_expense', 'ledger_fagutvikling_participant']) AS t
+        WHERE NOT has_table_privilege('employee', t, 'SELECT, INSERT, UPDATE, DELETE')
+    ) THEN
+        RAISE EXCEPTION 'employee cannot read and write every ledger table';
+    END IF;
 END;
 $$;
 
