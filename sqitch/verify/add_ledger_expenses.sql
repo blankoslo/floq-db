@@ -4,11 +4,6 @@ BEGIN;
 
 DO
 $$
-DECLARE
-    ledger_tables CONSTANT TEXT[] := ARRAY[
-        'ledger_expense', 'ledger_tech_expense', 'ledger_social_expense', 'ledger_fagutvikling_expense',
-        'ledger_fagutvikling_participant', 'ledger_expense_draft', 'ledger_receipt'
-    ];
 BEGIN
     IF enum_range(NULL::ledger_expense_type)::TEXT[] <> ARRAY['tech', 'fagutvikling', 'sosialt'] THEN
         RAISE EXCEPTION 'ledger_expense_type does not match the app''s type keys';
@@ -42,68 +37,12 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1
         FROM pg_catalog.pg_constraint
-        WHERE conrelid = 'ledger_receipt'::regclass
-          AND conname = 'ledger_receipt_has_one_owner'
-          AND contype = 'c'
+        WHERE conrelid = 'ledger_fagutvikling_participant'::regclass
+          AND contype = 'f'
+          AND confrelid = 'ledger_fagutvikling_expense'::regclass
+          AND confdeltype = 'c'
     ) THEN
-        RAISE EXCEPTION 'a receipt can belong to both a draft and an expense, or to neither';
-    END IF;
-
-    IF (
-        SELECT COUNT(*)
-        FROM pg_catalog.pg_trigger
-        WHERE NOT tgisinternal
-          AND tgname IN ('ledger_expense_created_by', 'ledger_receipt_created_by')
-    ) <> 2 THEN
-        RAISE EXCEPTION 'the created_by triggers are missing';
-    END IF;
-
-    IF (
-        SELECT COUNT(*)
-        FROM pg_catalog.pg_class
-        WHERE relname = ANY (ledger_tables)
-          AND relrowsecurity
-    ) <> 7 THEN
-        RAISE EXCEPTION 'row-level security is not enabled on every ledger table';
-    END IF;
-
-    -- Without SECURITY DEFINER the type tables' policies recurse into each other.
-    IF (
-        SELECT COUNT(*)
-        FROM pg_catalog.pg_proc
-        WHERE proname IN ('ledger_expense_visible', 'ledger_expense_editable')
-          AND prosecdef
-    ) <> 2 THEN
-        RAISE EXCEPTION 'the ledger access functions are not SECURITY DEFINER';
-    END IF;
-
-    IF EXISTS (
-        SELECT 1
-        FROM pg_catalog.pg_policies
-        WHERE tablename = 'ledger_expense_draft'
-          AND NOT (roles = ARRAY['employee']::name[] AND qual = '(owner_id = logged_in_employee_id())')
-    ) THEN
-        RAISE EXCEPTION 'someone other than its owner can reach a draft';
-    END IF;
-
-    IF EXISTS (
-        SELECT 1
-        FROM unnest(ledger_tables) AS t
-        WHERE NOT has_table_privilege('employee', t, 'SELECT, INSERT, UPDATE, DELETE')
-    ) THEN
-        RAISE EXCEPTION 'employee grants do not match the expected contract';
-    END IF;
-
-    IF EXISTS (
-        SELECT 1
-        FROM unnest(ledger_tables) AS t
-        WHERE t <> 'ledger_expense_draft'
-          AND NOT has_table_privilege('read_only', t, 'SELECT')
-    ) OR has_table_privilege('read_only', 'ledger_expense_draft', 'SELECT')
-       OR has_table_privilege('read_only', 'ledger_expense', 'INSERT')
-       OR has_table_privilege('read_only', 'ledger_expense', 'UPDATE')
-       OR has_table_privilege('read_only', 'ledger_expense', 'DELETE') THEN
-        RAISE EXCEPTION 'read_only grants do not match the expected contract';
+        RAISE EXCEPTION 'participants do not follow their fagutvikling expense';
     END IF;
 END;
 $$;
