@@ -143,3 +143,4 @@ ledger_expense_purchased_by [add_ledger_expenses] 2026-10-30T12:00:00Z Tobias Pa
 move_fagutvikling_participant_to_expense [add_ledger_expenses] 2026-10-30T09:56:38Z Sergey Jakobsen <sergey@blank.no> # Move the fagutvikling participant onto its expense, one person per expense, and drop ledger_fagutvikling_participant
 add_ledger_social_events [employees_table add_employee_user] 2026-11-02T14:53:54Z Sergey Jakobsen <sergey@blank.no> # Add sosialt events for the ledger app: an event anyone may add an utgift to until its creator closes it
 drop_ledger_social_expense [add_ledger_expenses] 2026-11-02T14:54:30Z Sergey Jakobsen <sergey@blank.no> # Drop ledger_social_expense, which events replace, and rebuild ledger_expense_type without sosialt
+add_ledger_social_event_location [add_ledger_social_events] 2026-11-03T16:02:01Z Sergey Jakobsen <sergey@blank.no> # Add where a sosialt event took place, null on the events from before it was asked
