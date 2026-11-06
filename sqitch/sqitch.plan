@@ -145,3 +145,4 @@ add_ledger_social_events [employees_table add_employee_user] 2026-11-02T14:53:54
 drop_ledger_social_expense [add_ledger_expenses] 2026-11-02T14:54:30Z Sergey Jakobsen <sergey@blank.no> # Drop ledger_social_expense, which events replace, and rebuild ledger_expense_type without sosialt
 add_ledger_social_event_location [add_ledger_social_events] 2026-11-03T16:02:01Z Sergey Jakobsen <sergey@blank.no> # Add where a sosialt event took place, null on the events from before it was asked
 add_ledger_annet_expense [drop_ledger_social_expense] 2026-11-05T15:05:35Z Sergey Jakobsen <sergey@blank.no> # Add annet utlegg for the ledger app, anything the other types do not cover, and rebuild ledger_expense_type with annet
+add_ledger_slack_threads [add_ledger_expenses add_ledger_social_events] 2026-11-06T14:13:54Z Sergey Jakobsen <sergey@blank.no> # Keep the Slack post an expense or event was announced in, so what follows replies in its thread
