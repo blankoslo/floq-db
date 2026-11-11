@@ -146,3 +146,4 @@ drop_ledger_social_expense [add_ledger_expenses] 2026-11-02T14:54:30Z Sergey Jak
 add_ledger_social_event_location [add_ledger_social_events] 2026-11-03T16:02:01Z Sergey Jakobsen <sergey@blank.no> # Add where a sosialt event took place, null on the events from before it was asked
 add_ledger_annet_expense [drop_ledger_social_expense] 2026-11-05T15:05:35Z Sergey Jakobsen <sergey@blank.no> # Add annet utlegg for the ledger app, anything the other types do not cover, and rebuild ledger_expense_type with annet
 add_ledger_slack_threads [add_ledger_expenses add_ledger_social_events] 2026-11-06T14:13:54Z Sergey Jakobsen <sergey@blank.no> # Keep the Slack post an expense or event was announced in, so what follows replies in its thread
+add_ledger_fagutvikling_amount [move_fagutvikling_participant_to_expense] 2026-11-11T22:29:28Z Sergey Jakobsen <sergey@blank.no> # Let a fagutvikling be basic, without hvor, rolle or bucketed costs, and keep its one receipt's sum as amount
