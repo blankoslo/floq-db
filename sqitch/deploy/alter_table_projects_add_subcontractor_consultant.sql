@@ -18,11 +18,4 @@ ALTER TABLE projects
         AND subcontractor_margin IS NULL)
   );
 
-COMMENT ON COLUMN projects.subcontractor_consultant_name IS
-  'The one subcontractor consultant on the project. floq-invoice prefills the invoice line with it.';
-COMMENT ON COLUMN projects.subcontractor_hourly_rate IS
-  'What the customer pays per hour for the subcontractor consultant, in NOK. floq-invoice prefills the invoice line with it.';
-COMMENT ON COLUMN projects.subcontractor_margin IS
-  'Blank''s cut of subcontractor_hourly_rate, in percent (5.00 = 5 %). The subcontractor is paid the rest. Used by floq-balance.';
-
 COMMIT;
